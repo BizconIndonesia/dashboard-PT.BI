@@ -12,7 +12,8 @@ import {
   getDocFromServer,
   getDocs,
   writeBatch,
-  doc
+  doc,
+  limit
 } from 'firebase/firestore';
 import { 
   signInWithPopup, 
@@ -971,46 +972,73 @@ const Chat = ({ user }: { user: User }) => {
   );
 };
 
-const UserList = () => {
-  const users = [
-    { name: "Jefri", position: "Project Manager", status: "Online", lastActive: "Just now", dept: "Operations" },
-    { name: "Andi Saputra", position: "Site Supervisor", status: "Online", lastActive: "2m ago", dept: "Operations" },
-    { name: "Siti Aminah", position: "Data Analyst", status: "Offline", lastActive: "1h ago", dept: "Technical" },
-    { name: "Budi Santoso", position: "Logistic Lead", status: "Online", lastActive: "10m ago", dept: "Supply Chain" },
-    { name: "Diana Putri", position: "Safety Officer", status: "Offline", lastActive: "5h ago", dept: "HSE" },
-  ];
+const UserList = ({ currentUser }: { currentUser: User }) => {
+  const [activeUsers, setActiveUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'presence'), orderBy('lastActive', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const users = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setActiveUsers(users);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const formatPresenceTime = (ts: any) => {
+    if (!ts) return '';
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    const diff = Date.now() - date.getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="bg-card-bg border border-border-subtle rounded-xl overflow-hidden shadow-sm">
-      <div className="p-6 border-b border-border-subtle bg-[#11141B]">
+      <div className="p-6 border-b border-border-subtle bg-[#11141B] flex justify-between items-center">
         <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary flex items-center gap-2">
-          <Users className="w-4 h-4 text-accent" /> Dashboard Users
+          <Users className="w-4 h-4 text-accent" /> Active Site Personnel
         </h3>
+        <p className="text-[10px] uppercase font-black text-accent">{activeUsers.length} Logged In</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="bg-app-bg text-text-secondary uppercase tracking-widest border-b border-border-subtle">
               <th className="p-4 font-black">User</th>
-              <th className="p-4 font-black">Department</th>
               <th className="p-4 font-black">Position</th>
-              <th className="p-4 font-black">Last Active</th>
-              <th className="p-4 font-black">Status</th>
+              <th className="p-4 font-black">Last Seen</th>
+              <th className="p-4 font-black text-right">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle/30">
-            {users.map((u, i) => (
-              <tr key={i} className="hover:bg-white/5 transition-colors group">
+            {activeUsers.map((u) => (
+              <tr key={u.id} className={cn(
+                "hover:bg-white/5 transition-colors group",
+                u.uid === currentUser.uid ? "bg-accent/5" : ""
+              )}>
                 <td className="p-4 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent group-hover:scale-110 transition-transform">
-                    {u.name[0]}
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center font-bold relative",
+                    u.uid === currentUser.uid ? "bg-accent text-white" : "bg-accent/20 text-accent"
+                  )}>
+                    {u.name?.[0]}
+                    <div className={cn(
+                      "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 border-2 border-card-bg rounded-full",
+                      u.status === 'Online' ? "bg-success" : "bg-text-secondary"
+                    )} />
                   </div>
-                  <span className="font-bold text-text-primary">{u.name}</span>
+                  <div>
+                    <span className="font-bold text-text-primary block">{u.name} {u.uid === currentUser.uid && <span className="text-[8px] bg-accent/20 text-accent px-1 rounded ml-1 italic">YOU</span>}</span>
+                    <span className="text-[9px] text-text-secondary opacity-60 uppercase">{u.dept || 'Operations'}</span>
+                  </div>
                 </td>
-                <td className="p-4 text-text-secondary">{u.dept}</td>
                 <td className="p-4 text-text-secondary font-medium">{u.position}</td>
-                <td className="p-4 text-text-secondary opacity-60 italic">{u.lastActive}</td>
-                <td className="p-4">
+                <td className="p-4 text-text-secondary opacity-60 italic">{formatPresenceTime(u.lastActive)}</td>
+                <td className="p-4 text-right">
                   <span className={cn(
                     "px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
                     u.status === 'Online' ? "bg-success/10 text-success border border-success/20" : "bg-text-secondary/10 text-text-secondary border border-border-subtle"
@@ -1510,13 +1538,13 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
   );
 };
 
-const NotificationPanel = () => {
-  const alerts = [
-    { type: 'update', title: 'Data Produksi Diperbarui', desc: 'Laporan harian untuk 16 April 2026 telah diverifikasi.', time: '10m ago', icon: CheckCircle, color: 'text-success' },
-    { type: 'market', title: 'Update Market Price', desc: 'Kurs Dollar BI Rate naik menjadi Rp 17.245.', time: '1h ago', icon: TrendingUp, color: 'text-accent' },
-    { type: 'alert', title: 'Peringatan Cuaca', desc: 'Rata-rata rainfall meningkat di Site LHL, waspada area slippery.', time: '3h ago', icon: AlertTriangle, color: 'text-danger' },
-    { type: 'info', title: 'Informasi Sistem', desc: 'Menu Market Watch sekarang tersedia untuk semua supervisor.', time: '5h ago', icon: Info, color: 'text-info' },
+const NotificationPanel = ({ items }: { items: any[] }) => {
+  const defaultAlerts = [
+    { id: 1, type: 'market', title: 'Update Market Price', desc: 'Kurs Dollar BI Rate naik menjadi Rp 17.245.', time: '1h ago', icon: TrendingUp, color: 'text-accent' },
+    { id: 2, type: 'alert', title: 'Peringatan Cuaca', desc: 'Rata-rata rainfall meningkat di Site LHL, waspada area slippery.', time: '3h ago', icon: AlertTriangle, color: 'text-danger' },
   ];
+
+  const displayItems = items.length > 0 ? items : defaultAlerts;
 
   return (
     <div className="max-w-2xl mx-auto bg-card-bg border border-border-subtle rounded-xl overflow-hidden shadow-sm">
@@ -1527,16 +1555,15 @@ const NotificationPanel = () => {
         <button className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline">Mark all as read</button>
       </div>
       <div className="divide-y divide-border-subtle/30">
-        {alerts.map((a, i) => (
+        {displayItems.map((a) => (
           <motion.div 
-            key={i}
+            key={a.id}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.1 }}
             className="p-5 flex gap-5 hover:bg-white/5 transition-colors cursor-pointer"
           >
             <div className={cn("w-10 h-10 rounded-xl bg-app-bg border border-border-subtle flex items-center justify-center shrink-0", a.color)}>
-              <a.icon size={18} />
+              {typeof a.icon === 'string' ? <Info size={18} /> : <a.icon size={18} />}
             </div>
             <div className="space-y-1 flex-1">
               <div className="flex justify-between items-start">
@@ -1643,6 +1670,41 @@ function AppContent() {
   const [mounted, setMounted] = useState(false);
   const [allData, setAllData] = useState<DailyRecord[]>(RAW_DATA);
   const [isLiveData, setIsLiveData] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  // Presence Tracking
+  useEffect(() => {
+    if (!user) return;
+
+    const userRef = doc(db, 'presence', user.uid);
+    const updatePresence = async (status: 'Online' | 'Offline') => {
+      try {
+        await setDoc(userRef, {
+          uid: user.uid,
+          name: user.name,
+          position: user.position,
+          status,
+          lastActive: serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Presence update failed:", err);
+      }
+    };
+
+    updatePresence('Online');
+    
+    // Heartbeat every 2 minutes
+    const interval = setInterval(() => updatePresence('Online'), 120000);
+
+    const handleTabClose = () => updatePresence('Offline');
+    window.addEventListener('beforeunload', handleTabClose);
+
+    return () => {
+      updatePresence('Offline');
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleTabClose);
+    };
+  }, [user?.uid]);
 
   useEffect(() => {
     setMounted(true);
@@ -1667,14 +1729,12 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Real-time listener for daily records - works for both public and logged in users
+    // Real-time listener for daily records
     const q = query(collection(db, 'dailyRecords'), orderBy('timestamp', 'asc'));
     const unsubscribeData = onSnapshot(q, (snapshot) => {
-      console.log("Firestore Data Update:", snapshot.size, "records found.");
       if (!snapshot.empty) {
         const records = snapshot.docs.map(doc => {
           const d = doc.data();
-          // Ensure nested objects exist to prevent dashboard crashes
           return {
             ...d,
             ob: d.ob || { plan: 0, actual: 0, fuel: 0 },
@@ -1684,19 +1744,58 @@ function AppContent() {
             pa: d.pa || { loader: 0, hauler: 0, cg: 0, grader: 0, bulldozer: 0, support: 0 }
           } as DailyRecord;
         });
+        
+        // Notification for data change
+        if (isLiveData && snapshot.docChanges().length > 0) {
+          const change = snapshot.docChanges()[0];
+          if (change.type === 'added' || change.type === 'modified') {
+            const data = change.doc.data();
+            setNotifications(prev => [{
+              id: Date.now(),
+              type: 'update',
+              title: 'Data Operasional Baru',
+              desc: `Update data untuk tanggal ${data.date} telah masuk ke sistem.`,
+              time: 'Just now',
+              icon: Activity,
+              color: 'text-success'
+            }, ...prev].slice(0, 10));
+          }
+        }
+
         setAllData(records);
         setIsLiveData(true);
       } else {
-        console.log("Firestore collection empty, using mock data.");
         setAllData(RAW_DATA);
         setIsLiveData(false);
       }
     }, (error) => {
-      console.error("Snapshot error:", error);
       handleFirestoreError(error, OperationType.LIST, 'dailyRecords');
     });
 
     return () => unsubscribeData();
+  }, [user?.uid, isLiveData]);
+
+  // Global Chat Listener for Notifications
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty && !snapshot.metadata.hasPendingWrites) {
+        const msg = snapshot.docs[0].data();
+        if (msg.userId !== user.uid) {
+           setNotifications(prev => [{
+              id: Date.now(),
+              type: 'chat',
+              title: 'Pesan Baru',
+              desc: `${msg.userName}: ${msg.text.substring(0, 30)}...`,
+              time: 'Just now',
+              icon: MessageSquare,
+              color: 'text-accent'
+            }, ...prev].slice(0, 10));
+        }
+      }
+    });
+    return () => unsubscribe();
   }, [user?.uid]);
 
   const handleLogout = async () => {
@@ -1957,7 +2056,11 @@ function AppContent() {
               className="relative p-2 hover:bg-white/5 rounded-full transition-colors group"
              >
                 <Bell size={18} className={cn(activeTab === 'notifications' ? "text-accent" : "text-text-secondary group-hover:text-text-primary")} />
-                <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-danger border-2 border-card-bg rounded-full flex items-center justify-center text-[6px] text-white">4</span>
+                {notifications.length > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-danger border-2 border-card-bg rounded-full flex items-center justify-center text-[6px] text-white animate-pulse">
+                    {notifications.length}
+                  </span>
+                )}
              </button>
              <div className={cn(
                "flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500",
@@ -1992,8 +2095,8 @@ function AppContent() {
               {activeTab === 'chat' && <Chat user={user} />}
               {activeTab === 'market' && <MarketPrice />}
               {activeTab === 'upload' && <UploadData onUploadComplete={() => setActiveTab('dashboard')} />}
-              {activeTab === 'notifications' && <NotificationPanel />}
-              {activeTab === 'users' && <UserList />}
+              {activeTab === 'notifications' && <NotificationPanel items={notifications} />}
+              {activeTab === 'users' && user && <UserList currentUser={user} />}
             </motion.div>
           </AnimatePresence>
         </div>
