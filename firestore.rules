@@ -66,12 +66,23 @@ service cloud.firestore {
         && (!data.keys().hasAny(['version']) || data.version is string);
     }
 
+    function isValidPresence(data) {
+      return data.keys().hasAll(['uid', 'status', 'lastActive'])
+        && data.uid == request.auth.uid
+        && data.status in ['Online', 'Offline']
+        && (data.lastActive == request.time || data.lastActive is timestamp || data.lastActive is string)
+        && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() <= 100))
+        && (!data.keys().hasAny(['position']) || (data.position is string && data.position.size() <= 100))
+        && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 100))
+        && (!data.keys().hasAny(['isTyping']) || data.isTyping is bool);
+    }
+
     // --- Matches ---
     
     // Global rule for presence (Relaxed slightly for debugging/resilience)
     match /presence/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidPresence(incoming());
     }
 
     match /messages/{messageId} {

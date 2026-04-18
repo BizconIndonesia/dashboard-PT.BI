@@ -712,6 +712,7 @@ const Chat = ({ user }: { user: User }) => {
   // Sync Typing Status
   const setTypingStatus = async (isTyping: boolean) => {
     try {
+      if (!auth.currentUser || auth.currentUser.uid !== user.uid) return;
       const userRef = doc(db, 'presence', user.uid);
       await setDoc(userRef, { isTyping }, { merge: true });
     } catch (err) {
@@ -1968,6 +1969,12 @@ function AppContent() {
 
     const userRef = doc(db, 'presence', user.uid);
     const updatePresence = async (status: 'Online' | 'Offline') => {
+      // Don't attempt to update if auth state is invalid for this user
+      if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+        console.log("Skipping presence update: User is already signed out or UID mismatch");
+        return;
+      }
+
       console.log(`Attempting to update presence for ${user.uid} to ${status}`);
       try {
         await setDoc(userRef, {
