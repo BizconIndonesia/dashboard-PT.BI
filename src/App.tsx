@@ -24,6 +24,7 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { 
   BarChart3, 
   Fuel, 
@@ -1178,7 +1179,133 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
       const docId = record.date.replace(/\s+/g, '-').toLowerCase();
       await setDoc(doc(db, 'dailyRecords', docId), record);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'dailyRecords');
+      // Don't rethrow, just log and keep processing if possible
+      console.error("Error saving record:", error);
+    }
+  };
+
+  const processDataRows = async (data: any[]) => {
+    const totalRows = data.length;
+    if (totalRows === 0) {
+      setIsProcessing(false);
+      alert("File kosong atau tidak terbaca.");
+      return;
+    }
+
+    try {
+      for (let i = 0; i < totalRows; i++) {
+        const row: any = data[i];
+        
+        // Normalize numeric values
+        const num = (v: any) => {
+          if (v === null || v === undefined || v === '') return 0;
+          if (typeof v === 'number') return v;
+          let s = String(v).trim();
+          // Handle Indonesian/European style: 1.234,56 -> 1234.56
+          if (s.includes(',') && !s.includes('.')) {
+            s = s.replace(',', '.');
+          } else if (s.includes(',') && s.includes('.')) {
+            if (s.lastIndexOf('.') > s.lastIndexOf(',')) {
+              s = s.replace(/,/g, '');
+            } else {
+              s = s.replace(/\./g, '').replace(',', '.');
+            }
+          }
+          const clean = s.replace(/[^-0-9.]/g, ''); 
+          return parseFloat(clean) || 0;
+        };
+
+        // Find key case-insensitively
+        const findVal = (keys: string[]) => {
+          const rowKeys = Object.keys(row);
+          for (const searchKey of keys) {
+            const found = rowKeys.find(rk => rk.toLowerCase() === searchKey.toLowerCase());
+            if (found) return row[found];
+          }
+          return null;
+        };
+
+        // Map row to DailyRecord structure
+        let rawDate = findVal(['Date', 'tanggal']);
+        let formattedDate = '';
+        let timestamp = Date.now();
+
+        if (!rawDate) {
+          const now = new Date();
+          formattedDate = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          timestamp = now.getTime();
+        } else {
+          // Function to handle Excel serial dates or normal strings
+          const parseDate = (val: any) => {
+            if (typeof val === 'number') {
+              // Heuristic: Excel dates are typically > 40000 (roughly years 2010+)
+              if (val > 30000 && val < 60000) {
+                return new Date((val - 25569) * 86400 * 1000);
+              }
+              return new Date(val); // Assume unix ms
+            }
+            const d = new Date(String(val));
+            return isNaN(d.getTime()) ? new Date(val) : d;
+          };
+
+          const dateObj = parseDate(rawDate);
+          if (!isNaN(dateObj.getTime())) {
+            formattedDate = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            timestamp = dateObj.getTime();
+          } else {
+            formattedDate = String(rawDate);
+            timestamp = Date.now();
+          }
+        }
+
+        const record: DailyRecord = {
+          date: formattedDate,
+          timestamp,
+          ob: {
+            plan: num(findVal(['OB_Plan', 'obPlan', 'ob_p', 'rencana_ob'])),
+            actual: num(findVal(['OB_Actual', 'obActual', 'ob_a', 'aktual_ob'])),
+            fuel: num(findVal(['OB_Fuel', 'obFuel', 'ob_f', 'solar_ob', 'fuel_ob']))
+          },
+          cg: {
+            plan: num(findVal(['CG_Plan', 'cgPlan', 'cg_p', 'rencana_cg'])),
+            actual: num(findVal(['CG_Actual', 'cgActual', 'cg_a', 'aktual_cg'])),
+            fuel: num(findVal(['CG_Fuel', 'cgFuel', 'cg_f', 'solar_cg', 'fuel_cg']))
+          },
+          weather: {
+            rainPlan: num(findVal(['Rain_Plan', 'rainPlan', 'rencana_hujan'])),
+            rainActual: num(findVal(['Rain_Actual', 'rainActual', 'aktual_hujan'])),
+            slipperyPlan: num(findVal(['Slippery_Plan', 'slipperyPlan', 'rencana_licin'])),
+            slipperyActual: num(findVal(['Slippery_Actual', 'slipperyActual', 'aktual_licin'])),
+            rainfall: num(findVal(['Rainfall', 'curah_hujan']))
+          },
+          productivity: {
+            t100: num(findVal(['Prod_T100', 't100'])),
+            t50: num(findVal(['Prod_T50', 't50'])),
+            t30: num(findVal(['Prod_T30', 't30']))
+          },
+          pa: {
+            loader: num(findVal(['PA_Loader', 'pa_loader', 'ketersediaan_loader'])),
+            hauler: num(findVal(['PA_Hauler', 'pa_hauler', 'ketersediaan_hauler'])),
+            cg: num(findVal(['PA_CG', 'pa_cg', 'ketersediaan_cg'])),
+            grader: num(findVal(['PA_Grader', 'pa_grader', 'ketersediaan_grader'])),
+            bulldozer: num(findVal(['PA_Bulldozer', 'pa_bulldozer', 'ketersediaan_dozer'])),
+            support: num(findVal(['PA_Support', 'pa_support', 'ketersediaan_support']))
+          }
+        };
+
+        await saveRecordToFirestore(record);
+        setProgress(Math.round(((i + 1) / totalRows) * 100));
+        
+        // Minor delay to keep UI responsive and allow progress to update
+        if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+      }
+      setIsDone(true);
+      if (onUploadComplete) onUploadComplete();
+    } catch (err) {
+      console.error("Error during row processing:", err);
+      alert("Error memproses data. Silakan periksa format file.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -1187,136 +1314,44 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
     setIsProcessing(true);
     setProgress(0);
 
-    Papa.parse(file, {
-      header: true,
-      dynamicTyping: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        const totalRows = results.data.length;
-        console.log("Parsed CSV rows:", totalRows);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
 
-        for (let i = 0; i < totalRows; i++) {
-          const row: any = results.data[i];
-          
-          // Normalize numeric values
-          const num = (v: any) => {
-            if (v === null || v === undefined || v === '') return 0;
-            if (typeof v === 'number') return v;
-            let s = String(v).trim();
-            // Handle Indonesian/European style: 1.234,56 -> 1234.56
-            if (s.includes(',') && !s.includes('.')) {
-              s = s.replace(',', '.');
-            } else if (s.includes(',') && s.includes('.')) {
-              if (s.lastIndexOf('.') > s.lastIndexOf(',')) {
-                s = s.replace(/,/g, '');
-              } else {
-                s = s.replace(/\./g, '').replace(',', '.');
-              }
-            }
-            const clean = s.replace(/[^-0-9.]/g, ''); 
-            return parseFloat(clean) || 0;
-          };
-
-          // Find key case-insensitively
-          const findVal = (keys: string[]) => {
-            const rowKeys = Object.keys(row);
-            for (const searchKey of keys) {
-              const found = rowKeys.find(rk => rk.toLowerCase() === searchKey.toLowerCase());
-              if (found) return row[found];
-            }
-            return null;
-          };
-
-          // Map CSV row to DailyRecord structure
-          let rawDate = findVal(['Date', 'tanggal']);
-          let formattedDate = '';
-          let timestamp = Date.now();
-
-          if (!rawDate) {
-            const now = new Date();
-            formattedDate = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-            timestamp = now.getTime();
-          } else {
-            // Function to handle Excel serial dates or normal strings
-            const parseDate = (val: any) => {
-              if (typeof val === 'number') {
-                // Heuristic: Excel dates are typically > 40000 (roughly years 2010+)
-                if (val > 40000 && val < 60000) {
-                  return new Date((val - 25569) * 86400 * 1000);
-                }
-                return new Date(val); // Assume unix ms
-              }
-              const d = new Date(String(val));
-              // Manual check for indonesian formats if built-in fails
-              if (isNaN(d.getTime())) {
-                 const idMatch = String(val).match(/(\d{1,2})[-/ ](\d{1,2}|[a-zA-Z]{3,10})[-/ ](\d{2,4})/);
-                 if (idMatch) {
-                    // This is a rough fallback
-                    return new Date(val); 
-                 }
-              }
-              return d;
-            };
-
-            const dateObj = parseDate(rawDate);
-            if (!isNaN(dateObj.getTime())) {
-              formattedDate = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-              timestamp = dateObj.getTime();
-            } else {
-              formattedDate = String(rawDate);
-              timestamp = Date.now();
-            }
-          }
-
-          const record: DailyRecord = {
-            date: formattedDate,
-            timestamp,
-            ob: {
-              plan: num(findVal(['OB_Plan', 'obPlan', 'ob_p', 'ob plan', 'rencana_ob'])),
-              actual: num(findVal(['OB_Actual', 'obActual', 'ob_a', 'ob actual', 'aktual_ob'])),
-              fuel: num(findVal(['OB_Fuel', 'obFuel', 'ob_f', 'ob fuel', 'solar_ob']))
-            },
-            cg: {
-              plan: num(findVal(['CG_Plan', 'cgPlan', 'cg_p', 'cg plan', 'coal_plan', 'rencana_cg'])),
-              actual: num(findVal(['CG_Actual', 'cgActual', 'cg_a', 'cg actual', 'coal_actual', 'aktual_cg'])),
-              fuel: num(findVal(['CG_Fuel', 'cgFuel', 'cg_f', 'cg fuel', 'coal_fuel', 'solar_cg']))
-            },
-            weather: {
-              rainPlan: num(findVal(['Rain_Plan', 'rain_p', 'rainPlan', 'rencana_hujan'])),
-              rainActual: num(findVal(['Rain_Actual', 'rain_a', 'rainActual', 'aktual_hujan'])),
-              slipperyPlan: num(findVal(['Slippery_Plan', 'slip_p', 'slipperyPlan', 'rencana_licin'])),
-              slipperyActual: num(findVal(['Slippery_Actual', 'slip_a', 'slipperyActual', 'aktual_licin'])),
-              rainfall: num(findVal(['Rainfall', 'curah_hujan', 'rain_fall']))
-            },
-            productivity: {
-              t100: num(findVal(['Prod_T100', 't100', 'produktivitas_t100', 'prod t100'])),
-              t50: num(findVal(['Prod_T50', 't50', 'produktivitas_t50', 'prod t50'])),
-              t30: num(findVal(['Prod_T30', 't30', 'produktivitas_t30', 'prod t30']))
-            },
-            pa: {
-              loader: num(findVal(['PA_Loader', 'pa_l', 'pa_loader', 'pa loader', 'pa_excavator', 'ketersediaan_loader'])),
-              hauler: num(findVal(['PA_Hauler', 'pa_h', 'pa_hauler', 'pa hauler', 'pa_dump_truck', 'ketersediaan_hauler'])),
-              cg: num(findVal(['PA_CG', 'pa_cg', 'pa cg', 'pa_coal_get', 'ketersediaan_cg'])),
-              grader: num(findVal(['PA_Grader', 'pa_g', 'pa_grader', 'pa grader', 'pa_motor_grader', 'ketersediaan_grader'])),
-              bulldozer: num(findVal(['PA_Bulldozer', 'pa_b', 'pa_bulldozer', 'pa bulldozer', 'pa_dozer', 'ketersediaan_dozer'])),
-              support: num(findVal(['PA_Support', 'pa_s', 'pa_support', 'pa support', 'pa_auxiliary', 'ketersediaan_support']))
-            }
-          };
-
-          console.log(`Processing row ${i + 1}/${totalRows}:`, record);
-          await saveRecordToFirestore(record);
-          setProgress(Math.round(((i + 1) / totalRows) * 100));
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          await processDataRows(jsonData);
+        } catch (err) {
+          console.error("Excel Read Error:", err);
+          setIsProcessing(false);
+          alert("Gagal membaca file Excel.");
         }
-
+      };
+      reader.onerror = () => {
         setIsProcessing(false);
-        setIsDone(true);
-        if (onUploadComplete) onUploadComplete();
-      },
-      error: (error) => {
-        console.error("CSV Parsing Error:", error);
-        setIsProcessing(false);
-      }
-    });
+        alert("Gagal membaca file.");
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          await processDataRows(results.data);
+        },
+        error: (error) => {
+          console.error("CSV Parsing Error:", error);
+          setIsProcessing(false);
+          alert("Error parsing CSV: " + error.message);
+        }
+      });
+    }
   };
 
   return (
