@@ -692,8 +692,51 @@ const Chat = ({ user }: { user: User }) => {
   const [attachments, setAttachments] = useState<{type: 'image' | 'video' | 'document', file: File}[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync Typing Status
+  const setTypingStatus = async (isTyping: boolean) => {
+    try {
+      const userRef = doc(db, 'presence', user.uid);
+      await setDoc(userRef, { isTyping }, { merge: true });
+    } catch (err) {
+      console.error("Failed to update typing status:", err);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+    
+    // Start typing
+    setTypingStatus(true);
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+    // Stop typing after 3 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      setTypingStatus(false);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    // Listen for typing users in presence collection
+    const q = query(collection(db, 'presence'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const typing = snapshot.docs
+        .map(doc => doc.data())
+        .filter(d => d.isTyping && d.uid !== user.uid)
+        .map(d => d.name);
+      setTypingUsers(typing);
+    });
+    return () => {
+      unsubscribe();
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [user.uid]);
 
   useEffect(() => {
     const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
@@ -756,20 +799,29 @@ const Chat = ({ user }: { user: User }) => {
     if (isUploading) return;
     if (!input.trim() && attachments.length === 0) return;
     
+    console.log("Chat send started", { text: input, attachmentsCount: attachments.length });
     setIsUploading(true);
+    // Clear typing status when sending
+    setTypingStatus(false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
     try {
       const messageAttachments = [];
       
       // Upload files to Firebase Storage
-      for (const a of attachments) {
-        const fileRef = ref(storage, `chat/${Date.now()}_${a.file.name}`);
-        const snapshot = await uploadBytes(fileRef, a.file);
-        const url = await getDownloadURL(snapshot.ref);
-        messageAttachments.push({
-          type: a.type,
-          name: a.file.name,
-          url: url
-        });
+      if (attachments.length > 0) {
+        console.log(`Uploading ${attachments.length} files...`);
+        for (const a of attachments) {
+          try {
+            const fileRef = ref(storage, `chat/${Date.now()}_${a.file.name}`);
+            const snapshot = await uploadBytes(fileRef, a.file);
+            const url = await getDownloadURL(snapshot.ref);
+            messageAttachments.push({ type: a.type, name: a.file.name, url });
+          } catch (uploadErr: any) {
+            console.error(`Individual upload failed for ${a.file.name}:`, uploadErr);
+            throw new Error(`Gagal mengunggah ${a.file.name}: ${uploadErr.message}`);
+          }
+        }
       }
 
       const messageData = {
@@ -786,7 +838,7 @@ const Chat = ({ user }: { user: User }) => {
       setAttachments([]);
     } catch (error: any) {
       console.error("Chat send failed:", error);
-      alert("Gagal mengirim pesan: " + error.message);
+      alert(error.message || "Gagal mengirim pesan");
     } finally {
       setIsUploading(false);
     }
@@ -859,6 +911,18 @@ const Chat = ({ user }: { user: User }) => {
             )}
           </motion.div>
         ))}
+        {typingUsers.length > 0 && (
+          <div className="flex items-center gap-2 text-text-secondary opacity-60 italic py-2">
+            <div className="flex gap-1">
+              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+            </div>
+            <span className="text-[10px] uppercase tracking-widest font-bold">
+              {typingUsers.join(', ')} sedang mengetik...
+            </span>
+          </div>
+        )}
       </div>
 
       {attachments.length > 0 && (
@@ -935,7 +999,7 @@ const Chat = ({ user }: { user: User }) => {
           <input 
             type="text" 
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Tulis pesan..."
             className="flex-1 p-3 bg-app-bg border border-border-subtle rounded-lg text-sm text-text-primary outline-none focus:border-accent transition-colors"
           />
@@ -2144,7 +2208,11 @@ function AppContent() {
                   "w-1.5 h-1.5 rounded-full animate-pulse",
                   isLiveData ? "bg-success" : "bg-warning"
                 )} /> 
-                <span className="hidden sm:inline">{isLiveData ? 'Live' : 'Mock'}</span>
+                <span className="hidden sm:inline">{isLiveData ? 'Live Cloud' : 'Offline Mode'}</span>
+             </div>
+             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-accent">
+                <Users size={12} />
+                <span className="text-[9px] font-black">Sync Active</span>
              </div>
              <div className="hidden lg:flex items-center gap-1 border-l border-border-subtle pl-6">
                 Site PT.LHL
