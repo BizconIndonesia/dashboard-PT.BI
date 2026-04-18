@@ -1,0 +1,6 @@
+{
+  "name": "PT.LHL - Kalteng Operation Dashboard",
+  "description": "Dashboard manajemen produksi tambang real-time untuk Site PT.LHL - Kalimantan Tengah, mencakup monitoring OB, CG, ketersediaan unit, dan cuaca.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

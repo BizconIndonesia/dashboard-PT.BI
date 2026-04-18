@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message sent in the chat channel.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The message content."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The unique ID of the user who sent the message."
+        },
+        "userName": {
+          "type": "string",
+          "description": "The name of the user who sent the message."
+        },
+        "userPosition": {
+          "type": "string",
+          "description": "The position/job title of the user."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The ISO 8601 timestamp when the message was sent."
+        },
+        "attachments": {
+          "type": "array",
+          "description": "Optional file attachments.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["image", "video", "document"] },
+              "name": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["text", "userId", "userName", "userPosition", "timestamp"]
+    },
+    "DailyRecord": {
+      "title": "Daily Record",
+      "description": "Production and operational data for a specific day.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "ob": {
+          "type": "object",
+          "properties": {
+            "plan": { "type": "number" },
+            "actual": { "type": "number" },
+            "fuel": { "type": "number" }
+          }
+        },
+        "cg": {
+          "type": "object",
+          "properties": {
+            "plan": { "type": "number" },
+            "actual": { "type": "number" },
+            "fuel": { "type": "number" }
+          }
+        },
+        "weather": {
+          "type": "object",
+          "properties": {
+            "rainPlan": { "type": "number" },
+            "rainActual": { "type": "number" },
+            "slipperyPlan": { "type": "number" },
+            "slipperyActual": { "type": "number" },
+            "rainfall": { "type": "number" }
+          }
+        },
+        "productivity": {
+          "type": "object",
+          "properties": {
+            "t100": { "type": "number" },
+            "t50": { "type": "number" },
+            "t30": { "type": "number" }
+          }
+        },
+        "pa": {
+          "type": "object",
+          "properties": {
+            "loader": { "type": "number" },
+            "hauler": { "type": "number" },
+            "cg": { "type": "number" },
+            "grader": { "type": "number" },
+            "bulldozer": { "type": "number" },
+            "support": { "type": "number" }
+          }
+        }
+      },
+      "required": ["date"]
+    }
+  },
+  "firestore": {
+    "/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Global chat messages for the operation."
+    },
+    "/dailyRecords/{recordId}": {
+      "schema": "DailyRecord",
+      "description": "Daily production records for the dashboard."
+    }
+  }
+}
