@@ -105,6 +105,20 @@
     "/dailyRecords/{recordId}": {
       "schema": "DailyRecord",
       "description": "Daily production records for the dashboard."
+    },
+    "/presence/{userId}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": "string" },
+          "name": { "type": "string" },
+          "position": { "type": "string" },
+          "email": { "type": "string" },
+          "status": { "type": "string", "enum": ["Online", "Offline"] },
+          "lastActive": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "User presence tracking for the site directory."
     }
   }
 }

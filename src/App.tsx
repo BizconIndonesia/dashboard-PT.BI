@@ -412,11 +412,16 @@ const DashboardTable = ({ data }: { data: DailyRecord[] }) => (
             <th className="p-3">Rainfall</th>
             <th className="p-3">PA Avg</th>
             <th className="p-3">Fuel (Total)</th>
+            <th className="p-3">Fuel Ratio</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border-subtle/30">
           {data.map((row, i) => {
             const paAvg = row.pa ? (row.pa.loader + row.pa.hauler + row.pa.cg + row.pa.grader + row.pa.bulldozer + row.pa.support) / 6 : 0;
+            const totalFuel = (row.ob?.fuel || 0) + (row.cg?.fuel || 0);
+            const obActual = row.ob?.actual || 0;
+            const fuelRatio = obActual > 0 ? totalFuel / obActual : 0;
+
             return (
               <tr key={i} className="hover:bg-white/5 transition-colors">
                 <td className="p-3 font-bold text-text-primary whitespace-nowrap">{row.date}</td>
@@ -427,13 +432,14 @@ const DashboardTable = ({ data }: { data: DailyRecord[] }) => (
                 <td className={cn("p-3 font-bold", paAvg >= 90 ? "text-success" : "text-error")}>
                   {paAvg.toFixed(1)}%
                 </td>
-                <td className="p-3 text-text-secondary">{( (row.ob?.fuel || 0) + (row.cg?.fuel || 0) ).toLocaleString()} L</td>
+                <td className="p-3 text-text-secondary">{totalFuel.toLocaleString()} L</td>
+                <td className="p-3 text-accent font-mono font-bold">{fuelRatio.toFixed(2)}</td>
               </tr>
             );
           })}
           {data.length === 0 && (
             <tr>
-              <td colSpan={7} className="p-8 text-center text-text-secondary opacity-40 uppercase font-black italic">
+              <td colSpan={8} className="p-8 text-center text-text-secondary opacity-40 uppercase font-black italic">
                 No data available for this selection
               </td>
             </tr>
@@ -471,6 +477,8 @@ const Dashboard = ({ data }: { data: DailyRecord[] }) => {
     count: 0 
   });
 
+  const avgFuelRatio = totals.obActual > 0 ? totals.obFuel / totals.obActual : 0;
+
   const pdtyData = [
     { name: '100T Units', value: totals.pdty100 / (totals.pdty100Count || 1), color: '#F37021' },
     { name: '50T Units', value: totals.pdty50 / (totals.pdty50Count || 1), color: '#808285' },
@@ -501,7 +509,7 @@ const Dashboard = ({ data }: { data: DailyRecord[] }) => {
         <StatCard 
           title="Fuel Usage Sum" 
           value={`${((totals.obFuel + totals.cgFuel) / 1000).toFixed(1)}K`} 
-          subValue="Total Liters"
+          subValue={`Avg Ratio: ${avgFuelRatio.toFixed(2)} Ltr/Bcm`}
           icon={Fuel}
         />
       </div>
@@ -649,18 +657,26 @@ const FuelLog = ({ data }: { data: DailyRecord[] }) => {
                 <th className="p-4 border-r border-border-subtle">Date</th>
                 <th className="p-4 border-r border-border-subtle">OB Fuel (L)</th>
                 <th className="p-4 border-r border-border-subtle">CG Fuel (L)</th>
-                <th className="p-4">Daily Total</th>
+                <th className="p-4 border-r border-border-subtle">Daily Total</th>
+                <th className="p-4">Ratio (L/Bcm)</th>
               </tr>
             </thead>
             <tbody className="text-text-primary">
-              {fuelData.map((d, i) => (
-                <tr key={i} className="border-b border-border-subtle hover:bg-white/5 transition-colors">
-                  <td className="p-4 border-r border-border-subtle">{d.date}</td>
-                  <td className="p-4 border-r border-border-subtle font-mono">{d.ob.toLocaleString()}</td>
-                  <td className="p-4 border-r border-border-subtle font-mono">{d.cg.toLocaleString()}</td>
-                  <td className="p-4 font-bold font-mono text-accent">{d.total.toLocaleString()}</td>
-                </tr>
-              ))}
+              {fuelData.map((d, i) => {
+                const dayRecord = data.find(r => r.date === d.date);
+                const obActual = dayRecord?.ob?.actual || 0;
+                const ratio = obActual > 0 ? d.total / obActual : 0;
+                
+                return (
+                  <tr key={i} className="border-b border-border-subtle hover:bg-white/5 transition-colors">
+                    <td className="p-4 border-r border-border-subtle">{d.date}</td>
+                    <td className="p-4 border-r border-border-subtle font-mono">{d.ob.toLocaleString()}</td>
+                    <td className="p-4 border-r border-border-subtle font-mono">{d.cg.toLocaleString()}</td>
+                    <td className="p-4 border-r border-border-subtle font-bold font-mono text-accent">{d.total.toLocaleString()}</td>
+                    <td className="p-4 font-mono font-bold text-success">{ratio.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -927,15 +943,45 @@ const Chat = ({ user }: { user: User }) => {
 
 const UserList = ({ currentUser }: { currentUser: User }) => {
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    const q = query(collection(db, 'presence'), orderBy('lastActive', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchUsers = async () => {
+    setIsRefreshing(true);
+    try {
+      const q = collection(db, 'presence');
+      const snapshot = await getDocs(q);
       const users = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })).sort((a: any, b: any) => {
+        const t1 = a.lastActive?.toMillis?.() || (a.lastActive instanceof Date ? a.lastActive.getTime() : 0);
+        const t2 = b.lastActive?.toMillis?.() || (b.lastActive instanceof Date ? b.lastActive.getTime() : 0);
+        return t2 - t1;
+      });
       setActiveUsers(users);
+      console.log("Fetched active users:", users.length);
+    } catch (err) {
+      console.error("Manual fetch failed:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    const q = collection(db, 'presence');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log("Presence snapshot received, docs:", snapshot.size);
+      const users = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })).sort((a: any, b: any) => {
+        const t1 = a.lastActive?.toMillis?.() || (a.lastActive instanceof Date ? a.lastActive.getTime() : 0);
+        const t2 = b.lastActive?.toMillis?.() || (b.lastActive instanceof Date ? b.lastActive.getTime() : 0);
+        return t2 - t1;
+      });
+      setActiveUsers(users);
+    }, (error) => {
+      console.error("Presence listener failed:", error);
     });
     return () => unsubscribe();
   }, []);
@@ -955,7 +1001,17 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
         <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary flex items-center gap-2">
           <Users className="w-4 h-4 text-accent" /> Active Site Personnel
         </h3>
-        <p className="text-[10px] uppercase font-black text-accent">{activeUsers.length} Logged In</p>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={fetchUsers}
+            disabled={isRefreshing}
+            className="p-2 hover:bg-white/5 rounded-lg transition-all text-text-secondary hover:text-accent"
+            title="Refresh List"
+          >
+            <RefreshCcw size={14} className={cn(isRefreshing && "animate-spin")} />
+          </button>
+          <p className="text-[10px] uppercase font-black text-accent">{activeUsers.length} Logged In</p>
+        </div>
       </div>
       <div className="overflow-x-auto">
         {activeUsers.length === 0 ? (
@@ -1639,6 +1695,7 @@ function AppContent() {
 
     const userRef = doc(db, 'presence', user.uid);
     const updatePresence = async (status: 'Online' | 'Offline') => {
+      console.log(`Attempting to update presence for ${user.uid} to ${status}`);
       try {
         await setDoc(userRef, {
           uid: user.uid,
@@ -1648,9 +1705,13 @@ function AppContent() {
           status,
           lastActive: serverTimestamp()
         }, { merge: true });
-        console.log(`Presence updated to ${status} for ${user.name}`);
-      } catch (err) {
+        console.log(`Presence successfully updated to ${status} for ${user.name}`);
+      } catch (err: any) {
         console.error("Presence update failed:", err);
+        // Fallback for permissions issues or missing profile fields
+        if (err.message.includes('permission')) {
+          console.warn("Check Firestore rules for presence collection");
+        }
       }
     };
 
