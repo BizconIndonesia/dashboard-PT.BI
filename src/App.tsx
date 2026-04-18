@@ -207,8 +207,6 @@ class GlobalErrorBoundary extends Component<any, any> {
 }
 
 const Login = ({ onLogin }: { onLogin: (user: User) => void }) => {
-  const [name, setName] = useState('');
-  const [position, setPosition] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleLogin = async () => {
@@ -225,44 +223,9 @@ const Login = ({ onLogin }: { onLogin: (user: User) => void }) => {
       });
     } catch (error) {
       console.error("Google login failed:", error);
+      alert("Login Gagal: Pastikan Anda memilih akun Google yang valid.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (name && position) {
-      setIsLoading(true);
-      try {
-        const result = await signInAnonymously(auth);
-        await updateProfile(result.user, { displayName: name });
-        onLogin({ 
-          uid: result.user.uid,
-          name, 
-          position 
-        });
-      } catch (error: any) {
-        console.error("Anonymous login failed:", error);
-        let errorHint = "Silakan gunakan Google Login atau hubungi admin untuk mengaktifkan 'Anonymous Auth' di Firebase Console.";
-        
-        if (error.code === 'auth/operation-not-allowed') {
-          errorHint = "Peringatan: 'Anonymous Auth' belum diaktifkan di Firebase Console Anda. Silakan aktifkan di (Authentication > Sign-in method).";
-        } else if (error.code === 'auth/unauthorized-domain') {
-          errorHint = "Domain ini belum terdaftar di 'Authorized Domains' di Firebase Console. Tambahkan domain ini agar Login bisa berfungsi.";
-        }
-
-        alert("Gagal Login Resmi: " + errorHint + "\n\nSistem akan masuk sebagai 'Tamu (View Only)'. Anda tidak akan bisa mengunggah data.");
-        
-        // Fallback to mock for UI view only
-        onLogin({ 
-          uid: 'mock-' + name.toLowerCase().replace(/\s/g, '-'),
-          name, 
-          position 
-        });
-      } finally {
-        setIsLoading(false);
-      }
     }
   };
 
@@ -271,66 +234,44 @@ const Login = ({ onLogin }: { onLogin: (user: User) => void }) => {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-card-bg border border-border-subtle rounded-xl p-8"
+        className="w-full max-w-md bg-card-bg border border-border-subtle rounded-xl p-10 text-center"
       >
-        <div className="mb-8 text-center">
-          <TrendingUp className="w-12 h-12 mx-auto mb-4 text-accent" />
-          <h1 className="text-3xl font-black tracking-tighter uppercase flex items-center justify-center">
+        <div className="mb-10">
+          <TrendingUp className="w-16 h-16 mx-auto mb-6 text-accent" />
+          <h1 className="text-4xl font-black tracking-tighter uppercase flex items-center justify-center">
             <span className="text-accent">BIZ</span>
             <span className="text-text-secondary">CON</span>
           </h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary mt-1">PT. BIZCON INDONESIA</p>
-          <p className="text-[9px] uppercase tracking-widest text-text-secondary opacity-40 mt-2">Operations Control Dashboard</p>
+          <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-text-secondary mt-2">PT. BIZCON INDONESIA</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-accent opacity-80 mt-4 italic font-black">Operations Control Dashboard</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-text-secondary mb-2 font-bold">Identitas (Nama)</label>
-            <input 
-              type="text" 
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full p-3 bg-app-bg border border-border-subtle rounded-lg text-text-primary outline-none focus:border-accent transition-colors"
-              placeholder="Nama Lengkap"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-text-secondary mb-2 font-bold">Jabatan</label>
-            <input 
-              type="text" 
-              required
-              value={position}
-              onChange={(e) => setPosition(e.target.value)}
-              className="w-full p-3 bg-app-bg border border-border-subtle rounded-lg text-text-primary outline-none focus:border-accent transition-colors"
-              placeholder="e.g. Supervisor"
-            />
-          </div>
-          <button 
-            type="submit"
-            className="w-full p-4 bg-card-bg border border-border-subtle text-text-primary font-bold uppercase tracking-widest rounded-lg hover:bg-white/5 transition-all active:scale-[0.98] mb-4"
-          >
-            Akses Panel Sistem (Preview)
-          </button>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border-subtle"></div></div>
-            <div className="relative flex justify-center text-[8px] uppercase tracking-widest bg-card-bg px-2 text-text-secondary">Atau</div>
+        
+        <div className="space-y-6">
+          <div className="p-4 bg-app-bg/50 border border-border-subtle rounded-xl text-left mb-6">
+            <p className="text-[10px] uppercase font-black tracking-widest text-text-secondary mb-1">Akses Sistem</p>
+            <p className="text-xs text-text-secondary opacity-60 leading-relaxed italic">
+              Gunakan email Google resmi perusahaan untuk mengakses data sinkronisasi operasional Site PT.LHL.
+            </p>
           </div>
 
           <button 
             type="button"
             onClick={handleGoogleLogin}
             disabled={isLoading}
-            className="w-full p-4 bg-accent text-white font-bold uppercase tracking-widest rounded-lg hover:brightness-110 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+            className="w-full p-5 bg-accent text-white font-black uppercase tracking-[0.2em] text-xs rounded-xl hover:brightness-110 transition-all active:scale-[0.98] flex items-center justify-center gap-4 shadow-xl shadow-accent/20"
           >
             {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <TrendingUp className="w-4 h-4" />
+              <TrendingUp className="w-5 h-5" />
             )}
             Login dengan Google
           </button>
-        </form>
+          
+          <p className="text-[9px] uppercase tracking-widest text-text-secondary opacity-30">
+            Secure Authentication provided by Google Cloud
+          </p>
+        </div>
       </motion.div>
     </div>
   );
@@ -346,7 +287,7 @@ const StatCard = ({ title, value, subValue, icon: Icon, color = "bg-card-bg" }: 
       <Icon className="w-5 h-5 text-accent opacity-60" />
     </div>
     <div className="flex flex-col">
-      <h3 className="text-3xl font-bold tracking-tight text-text-primary">{value}</h3>
+      <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">{value}</h3>
       {subValue && <span className="text-[10px] uppercase font-bold mt-1 text-text-secondary opacity-60">{subValue}</span>}
     </div>
   </motion.div>
@@ -701,26 +642,28 @@ const FuelLog = ({ data }: { data: DailyRecord[] }) => {
       </div>
 
       <div className="bg-card-bg border border-border-subtle rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-[#11141B] text-text-secondary font-bold uppercase tracking-wider">
-            <tr>
-              <th className="p-4 border-r border-border-subtle">Date</th>
-              <th className="p-4 border-r border-border-subtle">OB Fuel (L)</th>
-              <th className="p-4 border-r border-border-subtle">CG Fuel (L)</th>
-              <th className="p-4">Daily Total</th>
-            </tr>
-          </thead>
-          <tbody className="text-text-primary">
-            {fuelData.map((d, i) => (
-              <tr key={i} className="border-b border-border-subtle hover:bg-white/5 transition-colors">
-                <td className="p-4 border-r border-border-subtle">{d.date}</td>
-                <td className="p-4 border-r border-border-subtle font-mono">{d.ob.toLocaleString()}</td>
-                <td className="p-4 border-r border-border-subtle font-mono">{d.cg.toLocaleString()}</td>
-                <td className="p-4 font-bold font-mono text-accent">{d.total.toLocaleString()}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-[#11141B] text-text-secondary font-bold uppercase tracking-wider">
+              <tr>
+                <th className="p-4 border-r border-border-subtle">Date</th>
+                <th className="p-4 border-r border-border-subtle">OB Fuel (L)</th>
+                <th className="p-4 border-r border-border-subtle">CG Fuel (L)</th>
+                <th className="p-4">Daily Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="text-text-primary">
+              {fuelData.map((d, i) => (
+                <tr key={i} className="border-b border-border-subtle hover:bg-white/5 transition-colors">
+                  <td className="p-4 border-r border-border-subtle">{d.date}</td>
+                  <td className="p-4 border-r border-border-subtle font-mono">{d.ob.toLocaleString()}</td>
+                  <td className="p-4 border-r border-border-subtle font-mono">{d.cg.toLocaleString()}</td>
+                  <td className="p-4 font-bold font-mono text-accent">{d.total.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -834,7 +777,7 @@ const Chat = ({ user }: { user: User }) => {
   };
 
   return (
-    <div className="flex flex-col h-[700px] bg-card-bg border border-border-subtle rounded-xl shadow-sm overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-180px)] min-h-[500px] bg-card-bg border border-border-subtle rounded-xl shadow-sm overflow-hidden">
        <div className="p-4 bg-[#11141B] border-b border-border-subtle flex justify-between items-center">
         <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-accent" /> Site Discussion
@@ -1015,51 +958,58 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
         <p className="text-[10px] uppercase font-black text-accent">{activeUsers.length} Logged In</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="bg-app-bg text-text-secondary uppercase tracking-widest border-b border-border-subtle">
-              <th className="p-4 font-black">User</th>
-              <th className="p-4 font-black">Position</th>
-              <th className="p-4 font-black">Last Seen</th>
-              <th className="p-4 font-black text-right">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle/30">
-            {activeUsers.map((u) => (
-              <tr key={u.id} className={cn(
-                "hover:bg-white/5 transition-colors group",
-                u.uid === currentUser.uid ? "bg-accent/5" : ""
-              )}>
-                <td className="p-4 flex items-center gap-3">
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center font-bold relative",
-                    u.uid === currentUser.uid ? "bg-accent text-white" : "bg-accent/20 text-accent"
-                  )}>
-                    {u.name?.[0]}
-                    <div className={cn(
-                      "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 border-2 border-card-bg rounded-full",
-                      u.status === 'Online' ? "bg-success" : "bg-text-secondary"
-                    )} />
-                  </div>
-                  <div>
-                    <span className="font-bold text-text-primary block">{u.name} {u.uid === currentUser.uid && <span className="text-[8px] bg-accent/20 text-accent px-1 rounded ml-1 italic">YOU</span>}</span>
-                    <span className="text-[9px] text-text-secondary opacity-60 uppercase">{u.dept || 'Operations'}</span>
-                  </div>
-                </td>
-                <td className="p-4 text-text-secondary font-medium">{u.position}</td>
-                <td className="p-4 text-text-secondary opacity-60 italic">{formatPresenceTime(u.lastActive)}</td>
-                <td className="p-4 text-right">
-                  <span className={cn(
-                    "px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                    u.status === 'Online' ? "bg-success/10 text-success border border-success/20" : "bg-text-secondary/10 text-text-secondary border border-border-subtle"
-                  )}>
-                    {u.status}
-                  </span>
-                </td>
+        {activeUsers.length === 0 ? (
+          <div className="p-12 text-center">
+            <Users className="w-12 h-12 mx-auto text-text-secondary opacity-20 mb-4" />
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-40 italic">Mencari personil aktif...</p>
+          </div>
+        ) : (
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-app-bg text-text-secondary uppercase tracking-widest border-b border-border-subtle">
+                <th className="p-4 font-black">User</th>
+                <th className="p-4 font-black">Position</th>
+                <th className="p-4 font-black">Last Seen</th>
+                <th className="p-4 font-black text-right">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border-subtle/30">
+              {activeUsers.map((u) => (
+                <tr key={u.id} className={cn(
+                  "hover:bg-white/5 transition-colors group",
+                  u.uid === currentUser.uid ? "bg-accent/5" : ""
+                )}>
+                  <td className="p-4 flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center font-bold relative",
+                      u.uid === currentUser.uid ? "bg-accent text-white" : "bg-accent/20 text-accent"
+                    )}>
+                      {u.name?.[0]}
+                      <div className={cn(
+                        "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 border-2 border-card-bg rounded-full",
+                        u.status === 'Online' ? "bg-success" : "bg-text-secondary"
+                      )} />
+                    </div>
+                    <div>
+                      <span className="font-bold text-text-primary block">{u.name} {u.uid === currentUser.uid && <span className="text-[8px] bg-accent/20 text-accent px-1 rounded ml-1 italic">YOU</span>}</span>
+                      <span className="text-[9px] text-text-secondary opacity-60 uppercase">{u.email || 'Operations'}</span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-text-secondary font-medium">{u.position}</td>
+                  <td className="p-4 text-text-secondary opacity-60 italic">{formatPresenceTime(u.lastActive)}</td>
+                  <td className="p-4 text-right">
+                    <span className={cn(
+                      "px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
+                      u.status === 'Online' ? "bg-success/10 text-success border border-success/20" : "bg-text-secondary/10 text-text-secondary border border-border-subtle"
+                    )}>
+                      {u.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -1125,20 +1075,20 @@ const WeatherView = () => {
               </div>
             </div>
             
-            <div className="flex items-end gap-6 py-4">
-              <span className="text-8xl font-black tracking-tighter text-text-primary">
+            <div className="flex items-end gap-3 sm:gap-6 py-4">
+              <span className="text-6xl sm:text-8xl font-black tracking-tighter text-text-primary">
                 {Math.round(weather?.current?.temperature_2m)}°
               </span>
-              <div className="pb-4 space-y-1">
-                <p className="text-2xl font-bold text-accent italic uppercase">{getWeatherDesc(weather?.current?.weather_code)}</p>
-                <div className="flex items-center gap-4 text-text-secondary text-xs uppercase font-bold tracking-widest opacity-60">
+              <div className="pb-2 sm:pb-4 space-y-1">
+                <p className="text-xl sm:text-2xl font-bold text-accent italic uppercase">{getWeatherDesc(weather?.current?.weather_code)}</p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-text-secondary text-[10px] sm:text-xs uppercase font-bold tracking-widest opacity-60">
                   <span className="flex items-center gap-1"><Droplets size={12} /> Humidity: {weather?.current?.relative_humidity_2m}%</span>
                   <span className="flex items-center gap-1"><Activity size={12} /> Wind: {weather?.current?.wind_speed_10m} km/h</span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-6 border-t border-border-subtle grid grid-cols-4 gap-4">
+            <div className="pt-6 border-t border-border-subtle grid grid-cols-2 sm:grid-cols-4 gap-4">
               {weather?.hourly?.time.slice(0, 4).map((time: string, i: number) => (
                 <div key={i} className="text-center p-4 bg-app-bg/40 rounded-2xl border border-border-subtle/50">
                   <p className="text-[10px] font-black uppercase text-text-secondary mb-2">
@@ -1681,6 +1631,7 @@ function AppContent() {
   const [allData, setAllData] = useState<DailyRecord[]>(RAW_DATA);
   const [isLiveData, setIsLiveData] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Presence Tracking
   useEffect(() => {
@@ -1693,9 +1644,11 @@ function AppContent() {
           uid: user.uid,
           name: user.name,
           position: user.position,
+          email: user.email || '',
           status,
           lastActive: serverTimestamp()
         }, { merge: true });
+        console.log(`Presence updated to ${status} for ${user.name}`);
       } catch (err) {
         console.error("Presence update failed:", err);
       }
@@ -1720,13 +1673,11 @@ function AppContent() {
     setMounted(true);
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // If it's a mock user (anonymous fallback with fake UID), treat as guest
-        const isMock = firebaseUser.uid.startsWith('mock-');
         setUser({
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || 'User',
           email: firebaseUser.email || undefined,
-          position: isMock ? 'Guest User' : 'Dashboard User',
+          position: 'Dashboard User', // Default position for official users
           photoURL: firebaseUser.photoURL || undefined
         });
       } else {
@@ -1907,14 +1858,33 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-app-bg text-text-primary flex font-sans selection:bg-accent selection:text-white">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-app-bg text-text-primary flex font-sans selection:bg-accent selection:text-white overflow-x-hidden">
+      {/* Sidebar Overlay (Mobile) */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar Navigation */}
       <motion.aside 
-        initial={{ x: -260 }}
-        animate={{ x: 0 }}
-        className="w-64 bg-sidebar-bg border-r border-border-subtle flex flex-col fixed h-full z-20"
+        initial={false}
+        animate={{ 
+          x: isSidebarOpen ? 0 : (mounted && window.innerWidth < 1024 ? -260 : 0),
+          transition: { type: 'spring', damping: 25, stiffness: 200 }
+        }}
+        className={cn(
+          "w-64 bg-sidebar-bg border-r border-border-subtle flex flex-col fixed h-full z-50 lg:z-20",
+          !isSidebarOpen && "lg:translate-x-0"
+        )}
       >
-        <div className="p-8 border-b border-border-subtle">
+        <div className="p-8 border-b border-border-subtle flex justify-between items-center">
            <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-accent rounded flex items-center justify-center font-black text-white italic">B</div>
               <div>
@@ -1925,11 +1895,14 @@ function AppContent() {
                  <p className="text-[7px] uppercase tracking-wider text-text-secondary opacity-50">PT. BIZCON INDONESIA</p>
               </div>
            </div>
+           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 hover:bg-white/5 rounded-lg text-text-secondary">
+             <X size={16} />
+           </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1 mt-6">
+        <nav className="flex-1 p-4 space-y-1 mt-6 overflow-y-auto no-scrollbar">
           <button 
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}
             className={cn(
               "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
               activeTab === 'dashboard' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1938,7 +1911,7 @@ function AppContent() {
             <LayoutDashboard size={14} /> Realtime Stats
           </button>
           <button 
-            onClick={() => setActiveTab('fuel')}
+            onClick={() => { setActiveTab('fuel'); setIsSidebarOpen(false); }}
              className={cn(
               "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
               activeTab === 'fuel' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1947,7 +1920,7 @@ function AppContent() {
             <Fuel size={14} /> Fuel Logistics
           </button>
           <button 
-            onClick={() => setActiveTab('chat')}
+            onClick={() => { setActiveTab('chat'); setIsSidebarOpen(false); }}
              className={cn(
                "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
                activeTab === 'chat' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1956,7 +1929,7 @@ function AppContent() {
             <MessageSquare size={14} /> Site Discussion
           </button>
           <button 
-            onClick={() => setActiveTab('market')}
+            onClick={() => { setActiveTab('market'); setIsSidebarOpen(false); }}
              className={cn(
                "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
                activeTab === 'market' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1966,7 +1939,7 @@ function AppContent() {
           </button>
 
           <button 
-            onClick={() => setActiveTab('weather')}
+            onClick={() => { setActiveTab('weather'); setIsSidebarOpen(false); }}
              className={cn(
                "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
                activeTab === 'weather' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1980,7 +1953,7 @@ function AppContent() {
           </div>
 
           <button 
-            onClick={() => setActiveTab('upload')}
+            onClick={() => { setActiveTab('upload'); setIsSidebarOpen(false); }}
              className={cn(
                "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
                activeTab === 'upload' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -1990,7 +1963,7 @@ function AppContent() {
           </button>
           
           <button 
-            onClick={() => setActiveTab('users')}
+            onClick={() => { setActiveTab('users'); setIsSidebarOpen(false); }}
              className={cn(
                "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
                activeTab === 'users' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
@@ -2022,45 +1995,53 @@ function AppContent() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 min-h-screen flex flex-col">
+      <main className="flex-1 lg:ml-64 min-h-screen flex flex-col w-full">
         {/* Top Header */}
-        <header className="h-[72px] bg-card-bg border-b border-border-subtle flex items-center justify-between px-10 sticky top-0 z-10">
-          <div className="flex items-center gap-6">
-            <h1 className="text-xs font-black uppercase tracking-[0.3em] text-text-primary border-r border-border-subtle pr-6">
+        <header className="h-[72px] bg-card-bg border-b border-border-subtle flex items-center justify-between px-4 lg:px-10 sticky top-0 z-10 w-full">
+          <div className="flex items-center gap-3 lg:gap-6">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 hover:bg-white/5 rounded-lg text-text-secondary"
+            >
+              <Users size={20} />
+            </button>
+            <h1 className="text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] lg:tracking-[0.3em] text-text-primary border-r border-border-subtle pr-4 lg:pr-6 whitespace-nowrap">
               {(() => {
                 switch(activeTab) {
-                  case 'dashboard': return 'Operations';
+                  case 'dashboard': return 'Ops';
                   case 'fuel': return 'Logistics';
-                  case 'chat': return 'Communication';
-                  case 'market': return 'Market Watch';
-                  case 'weather': return 'Lemo Weather';
-                  case 'upload': return 'Data Center';
-                  case 'notifications': return 'Notifications';
-                  case 'users': return 'User Management';
-                  default: return 'Site Dashboard';
+                  case 'chat': return 'Comm';
+                  case 'market': return 'Market';
+                  case 'weather': return 'Weather';
+                  case 'upload': return 'Data';
+                  case 'notifications': return 'Notif';
+                  case 'users': return 'Users';
+                  default: return 'Site';
                 }
               })()}
             </h1>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold text-text-secondary mr-2">Timeframe:</span>
-              {monthNames.map((month) => (
-                <button
-                  key={month}
-                  onClick={() => setSelectedMonth(month)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-md transition-all text-[10px] font-bold uppercase tracking-wider border",
-                    selectedMonth === month 
-                      ? "bg-accent/10 border-accent text-accent" 
-                      : "bg-transparent border-border-subtle text-text-secondary hover:border-text-secondary"
-                  )}
-                >
-                  {month}
-                </button>
-              ))}
+            <div className="flex items-center gap-1.5 lg:gap-2">
+              <span className="hidden sm:inline text-[9px] lg:text-[10px] uppercase font-bold text-text-secondary mr-1 lg:mr-2">Month:</span>
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-[120px] sm:max-w-none">
+                {monthNames.map((month) => (
+                  <button
+                    key={month}
+                    onClick={() => setSelectedMonth(month)}
+                    className={cn(
+                      "px-2 lg:px-3 py-1 lg:py-1.5 rounded-md transition-all text-[9px] lg:text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap",
+                      selectedMonth === month 
+                        ? "bg-accent/10 border-accent text-accent" 
+                        : "bg-transparent border-border-subtle text-text-secondary hover:border-text-secondary"
+                    )}
+                  >
+                    {month}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+          <div className="flex items-center gap-3 lg:gap-6 text-[10px] font-bold uppercase tracking-widest text-text-secondary">
              <button 
               onClick={() => setActiveTab('notifications')}
               className="relative p-2 hover:bg-white/5 rounded-full transition-colors group"
@@ -2082,15 +2063,15 @@ function AppContent() {
                   "w-1.5 h-1.5 rounded-full animate-pulse",
                   isLiveData ? "bg-success" : "bg-warning"
                 )} /> 
-                {isLiveData ? 'Live Cloud Data' : 'Starter/Mock Data'}
+                <span className="hidden sm:inline">{isLiveData ? 'Live' : 'Mock'}</span>
              </div>
              <div className="hidden lg:flex items-center gap-1 border-l border-border-subtle pl-6">
-                Site PT.LHL - Kalteng
+                Site PT.LHL
              </div>
           </div>
         </header>
 
-        <div className="p-8 lg:p-10 flex-1">
+        <div className="p-4 sm:p-6 lg:p-10 flex-1">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab + selectedMonth}

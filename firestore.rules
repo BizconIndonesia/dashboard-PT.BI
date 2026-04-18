@@ -79,5 +79,10 @@ service cloud.firestore {
     match /test/connection {
       allow get: if true;
     }
+
+    match /presence/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
   }
 }
