@@ -60,12 +60,12 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
-      // Messages are immutable in this flow
       allow update, delete: if isAdmin();
     }
 
     match /dailyRecords/{recordId} {
-      allow read: if isSignedIn();
+      // Allowing public read for the dashboard data
+      allow read: if true;
       allow create: if isSignedIn() && isValidId(recordId) && isValidDailyRecord(incoming());
       allow update: if isSignedIn() && isValidId(recordId) && isValidDailyRecord(incoming());
       allow delete: if isAdmin();
