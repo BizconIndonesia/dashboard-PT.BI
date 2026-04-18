@@ -15,7 +15,8 @@ import {
   doc,
   limit,
   deleteDoc,
-  getDoc
+  getDoc,
+  where
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { 
@@ -61,14 +62,17 @@ import {
   Search,
   Filter,
   RefreshCcw,
-  Trash2
+  Trash2,
+  Send,
+  MoreVertical,
+  Smile,
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell,
   PieChart, Pie, ComposedChart
 } from 'recharts';
 import { RAW_DATA, getMonthNames, filterByMonth } from './data';
-import { User, DailyRecord, ChatMessage, IkhDocument } from './types';
+import { User, DailyRecord, ChatMessage } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -274,6 +278,12 @@ const Login = ({ onLogin }: { onLogin: (user: User) => void }) => {
           <p className="text-[9px] uppercase tracking-widest text-text-secondary opacity-30">
             Secure Authentication provided by Google Cloud
           </p>
+          
+          <div className="pt-8 mt-8 border-t border-border-subtle/30">
+            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-40">
+              &copy; {new Date().getFullYear()} jefri cost control Bizcon indonesia
+            </p>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -733,6 +743,8 @@ const Chat = ({ user }: { user: User }) => {
         .filter(d => d.isTyping && d.uid !== user.uid)
         .map(d => d.name);
       setTypingUsers(typing);
+    }, (error) => {
+      console.error("Typing status listener error:", error);
     });
     return () => {
       unsubscribe();
@@ -861,189 +873,284 @@ const Chat = ({ user }: { user: User }) => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-180px)] min-h-[500px] bg-card-bg border border-border-subtle rounded-xl shadow-sm overflow-hidden">
-       <div className="p-4 bg-[#11141B] border-b border-border-subtle flex justify-between items-center">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-accent" /> Site Discussion
-        </h3>
-        <p className="text-[10px] uppercase tracking-widest text-text-secondary opacity-40">Operations Channel</p>
+    <div className="flex flex-col h-[calc(100vh-180px)] min-h-[500px] bg-card-bg border border-border-subtle rounded-2xl shadow-2xl overflow-hidden">
+      {/* Header */}
+      <div className="p-4 bg-[#11141B] border-b border-border-subtle flex justify-between items-center z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent ring-2 ring-accent/10">
+            <MessageSquare className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold tracking-tight text-text-primary">Site Discussion</h3>
+            <p className="text-[10px] uppercase tracking-widest text-success font-black flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> Operations Channel
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="p-2 text-text-secondary hover:text-text-primary transition-colors">
+            <Search size={18} />
+          </button>
+          <button className="p-2 text-text-secondary hover:text-text-primary transition-colors">
+            <MoreVertical size={18} />
+          </button>
+        </div>
       </div>
       
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-app-bg/30">
+      <div 
+        ref={scrollRef} 
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 relative chat-background"
+        style={{
+          backgroundImage: `radial-gradient(#F3702122 0.5px, transparent 0.5px)`,
+          backgroundSize: '24px 24px'
+        }}
+      >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full opacity-20">
             <MessageSquare className="w-12 h-12 mb-2" />
             <p className="text-sm font-bold uppercase tracking-tighter">No active discussion</p>
           </div>
         )}
-        {messages.map((m) => (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            key={m.id} 
-            className={cn(
-              "p-4 bg-card-bg border border-border-subtle rounded-lg shadow-sm max-w-[85%] mb-2 relative group",
-              m.user.uid === user.uid ? "ml-auto border-accent/20 bg-accent/5" : "mr-auto"
-            )}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-bold text-xs uppercase text-accent">{m.user.name}</span>
-              <span className="text-[10px] uppercase font-bold text-text-secondary opacity-60 px-2 py-0.5 bg-app-bg rounded">{m.user.position}</span>
-              <span className="text-[10px] text-text-secondary opacity-30 ml-auto">{formatTimestamp(m.timestamp)}</span>
-              
-              {(user.isAdmin || m.user.uid === user.uid) && (
-                <button 
-                  onClick={async () => {
-                    if (confirm("Hapus pesan ini?")) {
-                      try {
-                        console.log("Attempting to delete message:", m.id);
-                        await deleteDoc(doc(db, 'messages', m.id));
-                      } catch (err: any) {
-                        console.error("Delete failed:", err);
-                        alert("Gagal menghapus pesan: " + err.message);
-                      }
-                    }
-                  }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-danger text-text-secondary"
-                  title="Hapus Pesan"
-                >
-                  <Trash2 size={12} />
-                </button>
+        {messages.map((m) => {
+          const isMe = m.user.uid === user.uid;
+          return (
+            <motion.div 
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              key={m.id} 
+              className={cn(
+                "flex flex-col max-w-[85%] sm:max-w-[70%] mb-1 group relative",
+                isMe ? "ml-auto items-end" : "mr-auto items-start"
               )}
-            </div>
-            {m.text && <p className="text-sm text-text-primary leading-relaxed mb-3">{m.text}</p>}
-            
-            {m.attachments && m.attachments.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {m.attachments.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 p-2 bg-app-bg/50 border border-border-subtle rounded-lg group/item hover:border-accent/40 transition-colors">
-                    <div className="w-8 h-8 rounded bg-accent/10 flex items-center justify-center text-accent">
-                      {getFileIcon(a.type)}
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-[10px] font-bold text-text-primary truncate">{a.name}</p>
-                      <p className="text-[8px] uppercase tracking-widest text-text-secondary opacity-60">{a.type}</p>
-                    </div>
-                    <button 
-                      onClick={() => window.open(a.url)}
-                      className="text-[9px] uppercase font-black text-accent px-2 py-1 opacity-0 group-hover/item:opacity-100 transition-opacity"
-                    >
-                      View
-                    </button>
+            >
+              {/* Sender Name */}
+              {!isMe && (
+                <span className="text-[10px] font-black uppercase tracking-widest text-accent mb-1 ml-2 flex items-center gap-2">
+                  {m.user.name} 
+                  <span className="text-[8px] opacity-40 font-normal px-1.5 py-0.5 bg-accent/10 rounded-full truncate max-w-[80px]">
+                    {m.user.position}
+                  </span>
+                </span>
+              )}
+
+              {/* Message Bubble */}
+              <div className={cn(
+                "relative p-3 rounded-2xl shadow-sm border transition-shadow hover:shadow-md",
+                isMe 
+                  ? "bg-[#1B3A34] border-accent/20 rounded-tr-none text-white" 
+                  : "bg-[#262D31] border-border-subtle rounded-tl-none text-text-primary"
+              )}>
+                {/* Delete Button (Overlay) */}
+                {(user.isAdmin || isMe) && (
+                  <button 
+                    onClick={async () => {
+                      if (confirm("Hapus pesan ini secara permanen?")) {
+                        try {
+                          await deleteDoc(doc(db, 'messages', m.id));
+                        } catch (err: any) {
+                          alert("Gagal menghapus: " + err.message);
+                        }
+                      }
+                    }}
+                    className={cn(
+                      "absolute -top-2 opacity-0 group-hover:opacity-100 transition-all p-1.5 bg-danger text-white rounded-full shadow-lg z-20",
+                      isMe ? "-left-2" : "-right-2"
+                    )}
+                    title="Hapus"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                )}
+
+                {m.text && <p className="text-[13px] leading-relaxed mb-1 selection:bg-accent/30">{m.text}</p>}
+                
+                {/* Attachments */}
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="grid grid-cols-1 gap-2 mt-2">
+                    {m.attachments.map((a, i) => (
+                      <div 
+                        key={i} 
+                        onClick={() => window.open(a.url)}
+                        className={cn(
+                          "flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-all border",
+                          isMe ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-black/20 border-white/5 hover:bg-black/30"
+                        )}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center text-accent">
+                          {getFileIcon(a.type)}
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <p className="text-[10px] font-bold truncate">{a.name}</p>
+                          <p className="text-[8px] uppercase tracking-widest opacity-50">{a.type}</p>
+                        </div>
+                        <Download size={14} className="opacity-40" />
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* Timestamp & Status */}
+                <div className={cn(
+                  "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-bold opacity-40 uppercase tracking-tighter",
+                  isMe ? "text-success" : "text-text-secondary"
+                )}>
+                  {formatTimestamp(m.timestamp)}
+                  {isMe && <CheckCircle size={10} className="text-success" />}
+                </div>
+
+                {/* Bubble Tip */}
+                <div className={cn(
+                  "absolute top-0 w-3 h-3 block",
+                  isMe ? "left-full -ml-1 border-l-4 border-l-[#1B3A34]" : "right-full -mr-1 border-r-4 border-r-[#262D31]"
+                )} style={{ 
+                  clipPath: isMe ? 'polygon(0 0, 0% 100%, 100% 0)' : 'polygon(100% 0, 0 0, 100% 100%)' 
+                }} />
               </div>
-            )}
-          </motion.div>
-        ))}
-        {typingUsers.length > 0 && (
-          <div className="flex items-center gap-2 text-text-secondary opacity-60 italic py-2">
-            <div className="flex gap-1">
-              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-              <span className="w-1 h-1 bg-accent rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-            </div>
-            <span className="text-[10px] uppercase tracking-widest font-bold">
-              {typingUsers.join(', ')} sedang mengetik...
-            </span>
-          </div>
-        )}
+            </motion.div>
+          );
+        })}
+        {/* Typing Indicator */}
+        <AnimatePresence>
+          {typingUsers.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              className="flex items-center gap-3 py-2 px-4 bg-[#262D31] border border-border-subtle rounded-full inline-flex w-auto mt-4"
+            >
+              <div className="flex gap-1.5">
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary">
+                {typingUsers[0]}{typingUsers.length > 1 ? ` & ${typingUsers.length - 1} lainnya` : ''} mengetik...
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
+      {/* Attachment Preview Bar */}
       {attachments.length > 0 && (
-        <div className="p-3 bg-app-bg/80 border-t border-border-subtle flex gap-2 overflow-x-auto">
+        <div className="p-3 bg-app-bg border-t border-border-subtle flex gap-3 overflow-x-auto z-20">
           {attachments.map((a, i) => (
-            <div key={i} className="relative flex-none w-24 p-2 bg-card-bg border border-border-subtle rounded items-center justify-center text-center">
-              <div className="w-8 h-8 mx-auto mb-1 rounded bg-accent/10 flex items-center justify-center text-accent">
+            <div key={i} className="relative flex-none w-28 p-3 bg-card-bg border border-accent/30 rounded-xl flex flex-col items-center justify-center group">
+              <div className="w-10 h-10 mb-2 rounded-xl bg-accent/10 flex items-center justify-center text-accent ring-2 ring-accent/10">
                 {getFileIcon(a.type)}
               </div>
-              <p className="text-[8px] font-bold text-text-primary truncate">{a.file.name}</p>
+              <p className="text-[9px] font-bold text-text-primary truncate w-full px-2 text-center">{a.file.name}</p>
               <button 
                 onClick={() => removeAttachment(i)}
-                className="absolute -top-1 -right-1 w-4 h-4 bg-danger text-white rounded-full flex items-center justify-center hover:scale-110 transition-transform"
+                className="absolute -top-2 -right-2 w-5 h-5 bg-danger text-white rounded-full flex items-center justify-center shadow-lg hover:rotate-90 transition-all"
               >
-                <X size={10} />
+                <X size={12} />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="p-4 bg-card-bg border-t border-border-subtle relative">
-        <form onSubmit={handleSend} className="flex gap-2">
-          <div className="relative">
-            <button 
-              type="button"
-              onClick={() => setShowMenu(!showMenu)}
-              className={cn(
-                "p-3 rounded-lg border border-border-subtle transition-all",
-                showMenu ? "bg-accent text-white" : "bg-app-bg text-text-secondary hover:text-text-primary"
-              )}
-            >
-              <Paperclip size={18} />
-            </button>
+      {/* Message Input Footer */}
+      <div className="p-4 bg-[#11141B] border-t border-border-subtle shadow-2xl z-10">
+        <form onSubmit={handleSend} className="flex gap-3 items-end">
+          <div className="flex gap-1">
+            <div className="relative">
+              <button 
+                type="button"
+                onClick={() => setShowMenu(!showMenu)}
+                className={cn(
+                  "p-3 rounded-xl transition-all border border-border-subtle",
+                  showMenu ? "bg-accent text-white border-accent" : "bg-white/5 text-text-secondary hover:text-accent hover:border-accent/40"
+                )}
+              >
+                <Paperclip size={20} />
+              </button>
 
-            <AnimatePresence>
-              {showMenu && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                  className="absolute bottom-full left-0 mb-2 w-48 bg-sidebar-bg border border-border-subtle rounded-xl shadow-2xl p-2 z-30"
-                >
-                  <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary px-3 py-2 opacity-40">Lampirkan File</p>
-                  <button 
-                    type="button" 
-                    onClick={() => handleFileClick('image')}
-                    className="w-full flex items-center gap-3 p-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-all"
-                  >
-                    <ImageIcon size={14} className="text-accent" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Gambar</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => handleFileClick('video')}
-                    className="w-full flex items-center gap-3 p-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-all"
-                  >
-                    <VideoIcon size={14} className="text-accent" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Video</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => handleFileClick('document')}
-                    className="w-full flex items-center gap-3 p-3 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-all"
-                  >
-                    <FileIcon size={14} className="text-accent" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Dokumen</span>
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <AnimatePresence>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9, y: 10, x: -10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: 10, x: -10 }}
+                      className="absolute bottom-full left-0 mb-3 w-56 bg-sidebar-bg border border-border-subtle rounded-2xl shadow-2xl p-2 z-50 overflow-hidden"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-widest text-accent px-4 py-3 border-b border-border-subtle/30 bg-accent/5">Lampiran</p>
+                      <div className="grid grid-cols-1 gap-1 pt-1">
+                        <button 
+                          type="button" 
+                          onClick={() => handleFileClick('image')}
+                          className="flex items-center gap-3 p-3 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                            <ImageIcon size={16} />
+                          </div>
+                          <span className="font-bold text-xs uppercase tracking-tight">Foto & Gambar</span>
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => handleFileClick('video')}
+                          className="flex items-center gap-3 p-3 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center group-hover:bg-red-500 group-hover:text-white transition-colors">
+                            <VideoIcon size={16} />
+                          </div>
+                          <span className="font-bold text-xs uppercase tracking-tight">Video</span>
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => handleFileClick('document')}
+                          className="flex items-center gap-3 p-3 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                            <FileIcon size={16} />
+                          </div>
+                          <span className="font-bold text-xs uppercase tracking-tight">Dokumen</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
-          <input 
-            type="text" 
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Tulis pesan..."
-            className="flex-1 p-3 bg-app-bg border border-border-subtle rounded-lg text-sm text-text-primary outline-none focus:border-accent transition-colors"
-          />
+          <div className="flex-1 relative">
+            <input 
+              type="text"
+              value={input}
+              onChange={handleInputChange}
+              placeholder="Ketik pesan operasional..."
+              className="w-full bg-[#262D31] border border-border-subtle text-sm rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-all pl-12"
+            />
+            <Smile className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary w-5 h-5 hover:text-accent cursor-pointer" />
+          </div>
+
           <button 
-            disabled={isUploading}
+            type="submit"
+            disabled={isUploading || (!input.trim() && attachments.length === 0)}
             className={cn(
-              "bg-accent text-white px-6 py-2 rounded-lg font-bold uppercase text-[10px] tracking-widest transition-all",
-              isUploading ? "opacity-50 cursor-not-allowed" : "hover:brightness-110 active:scale-95"
+              "p-3 rounded-2xl transition-all shadow-lg flex items-center justify-center",
+              isUploading || (!input.trim() && attachments.length === 0)
+                ? "bg-white/10 text-text-secondary cursor-not-allowed" 
+                : "bg-accent text-white hover:bg-accent-hover hover:scale-105 active:scale-95 ring-4 ring-accent/10"
             )}
           >
-            {isUploading ? "Uploading..." : "Send"}
+            {isUploading ? (
+              <RefreshCcw size={20} className="animate-spin" />
+            ) : (
+              <Send size={20} className="transform rotate-0" />
+            )}
           </button>
         </form>
-        
+
         <input 
           type="file" 
           ref={fileInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
+          onChange={handleFileChange}
+          className="hidden"
         />
       </div>
     </div>
@@ -1057,7 +1164,7 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
   const fetchUsers = async () => {
     setIsRefreshing(true);
     try {
-      const q = collection(db, 'presence');
+      const q = query(collection(db, 'presence'), where('status', '==', 'Online'));
       const snapshot = await getDocs(q);
       const users = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -1077,7 +1184,7 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
   };
 
   useEffect(() => {
-    const q = collection(db, 'presence');
+    const q = query(collection(db, 'presence'), where('status', '==', 'Online'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       console.log("Presence snapshot received, docs:", snapshot.size);
       const users = snapshot.docs.map(doc => ({
@@ -1126,7 +1233,7 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
         {activeUsers.length === 0 ? (
           <div className="p-12 text-center">
             <Users className="w-12 h-12 mx-auto text-text-secondary opacity-20 mb-4" />
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-40 italic">Mencari personil aktif...</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-40 italic">Tidak ada personil lain yang sedang online</p>
           </div>
         ) : (
           <table className="w-full text-left text-xs">
@@ -1139,8 +1246,8 @@ const UserList = ({ currentUser }: { currentUser: User }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle/30">
-              {activeUsers.map((u) => (
-                <tr key={u.id} className={cn(
+              {activeUsers.map((u, idx) => (
+                <tr key={`${u.uid || u.id}-${idx}`} className={cn(
                   "hover:bg-white/5 transition-colors group",
                   u.uid === currentUser.uid ? "bg-accent/5" : ""
                 )}>
@@ -1705,11 +1812,43 @@ const NotificationPanel = ({ items }: { items: any[] }) => {
 };
 
 const MarketPrice = () => {
-  const prices = [
-    { name: 'Coal ICI 4', value: '$54.20', unit: '/ Ton', trend: '+1.2%', icon: Activity },
-    { name: 'Solar B40 (Kalsel/Kaltim)', value: 'Rp 20.350', unit: '/ Liter', trend: '+2.5%', icon: Fuel },
-    { name: 'USD / IDR (BI Rate)', value: 'Rp 17.245', unit: 'JISDOR Update', trend: '+4.15%', icon: TrendingUp },
-  ];
+  const [prices, setPrices] = useState([
+    { id: 'coal', name: 'Coal ICI 4', value: 54.20, unit: '/ Ton', trend: '+1.2%', icon: Activity, currency: '$', decimals: 2 },
+    { id: 'fuel', name: 'Solar B40 (Kalsel/Kaltim)', value: 20350, unit: '/ Liter', trend: '+2.5%', icon: Fuel, decimals: 0 },
+    { id: 'fx', name: 'USD / IDR (BI Rate)', value: 17245, unit: 'JISDOR Update', trend: '+4.15%', icon: TrendingUp, decimals: 0 },
+  ]);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [activeUpdates, setActiveUpdates] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const updatedId = prices[Math.floor(Math.random() * prices.length)].id;
+      
+      setPrices(prev => prev.map(p => {
+        if (p.id !== updatedId) return p;
+
+        const isLarge = p.id === 'fx' || p.id === 'fuel';
+        const volatility = isLarge ? 25 : 0.15;
+        const change = (Math.random() - 0.45) * volatility; // Slight upward bias
+        let newValue = p.value + change;
+
+        // Visual feedback
+        setActiveUpdates(prev => ({ ...prev, [p.id]: true }));
+        setTimeout(() => {
+          setActiveUpdates(prev => ({ ...prev, [p.id]: false }));
+        }, 1000);
+
+        return {
+          ...p,
+          value: newValue,
+          trend: change >= 0 ? `+${((Math.abs(change)/p.value)*100).toFixed(2)}%` : `-${((Math.abs(change)/p.value)*100).toFixed(2)}%`
+        };
+      }));
+      setLastUpdate(new Date());
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [prices]);
 
   const news = [
     { title: "Kementerian ESDM Tetapkan HBA April 2026, ICI 4 Stabil di Level $54", date: "16 Apr 2026", source: "Minerba News" },
@@ -1717,18 +1856,41 @@ const MarketPrice = () => {
     { title: "Rupiah Tembus 17.200 per Dollar, Bank Indonesia Intervensi Pasar Valas", date: "14 Apr 2026", source: "Bisnis News" },
   ];
 
+  const formatValue = (p: any) => {
+    const formatted = p.value.toLocaleString('id-ID', { 
+      minimumFractionDigits: p.decimals, 
+      maximumFractionDigits: p.decimals 
+    });
+    return p.id === 'coal' ? `$${formatted}` : `Rp ${formatted}`;
+  };
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-between items-center mb-2">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-success">Live Market Ticker</span>
+        </div>
+        <span className="text-[9px] uppercase tracking-widest text-text-secondary opacity-40">
+          Last sync: {lastUpdate.toLocaleTimeString()}
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {prices.map((p) => (
-          <StatCard 
-            key={p.name}
-            title={p.name}
-            value={p.value}
-            subValue={`${p.trend} ${p.unit}`}
-            icon={p.icon}
-            color={p.trend.startsWith('+') ? "bg-success/5 border-success/20" : "bg-danger/5 border-danger/20"}
-          />
+          <motion.div
+            key={p.id}
+            animate={activeUpdates[p.id] ? { scale: [1, 1.02, 1] } : {}}
+            transition={{ duration: 0.3 }}
+          >
+            <StatCard 
+              title={p.name}
+              value={formatValue(p)}
+              subValue={`${p.trend} ${p.unit}`}
+              icon={p.icon}
+              color={p.trend.startsWith('+') ? "bg-success/5 border-success/20" : "bg-danger/5 border-danger/20"}
+            />
+          </motion.div>
         ))}
       </div>
 
@@ -1779,165 +1941,6 @@ const MarketPrice = () => {
   );
 };
 
-const IkhComponent = ({ user }: { user: User }) => {
-  const [docs, setDocs] = useState<IkhDocument[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const q = query(collection(db, 'ikh'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as IkhDocument[];
-      setDocs(items);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      alert("Mohon pilih file PDF");
-      return;
-    }
-
-    setIsUploading(true);
-    setProgress(5);
-    try {
-      console.log("Uploading file to Storage with resumable session:", file.name);
-      const fileRef = ref(storage, `ikh/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(fileRef, file);
-
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            setProgress(pct);
-          }, 
-          (error) => {
-            console.error("UploadTask failed:", error);
-            reject(error);
-          }, 
-          () => resolve()
-        );
-      });
-
-      const url = await getDownloadURL(uploadTask.snapshot.ref);
-      console.log("File uploaded, getting URL:", url);
-      setProgress(95);
-
-      const docData = {
-        name: file.name,
-        url: url,
-        date: new Date().toLocaleDateString('id-ID'),
-        timestamp: serverTimestamp(),
-        uploadedBy: user.uid,
-        uploaderName: user.name
-      };
-
-      console.log("Adding doc to Firestore...");
-      await addDoc(collection(db, 'ikh'), docData);
-      setProgress(100);
-      alert("File IKH berhasil diunggah");
-    } catch (err: any) {
-      console.error("IKH upload failed:", err);
-      let errorMsg = err.message;
-      if (err.code === 'storage/retry-limit-exceeded') {
-        errorMsg = "Koneksi terputus saat mengunggah. Mohon periksa internet Anda dan coba lagi.";
-      }
-      alert("Gagal unggah: " + errorMsg);
-    } finally {
-      setIsUploading(false);
-      setProgress(0);
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end">
-        <div>
-          <h2 className="text-xl font-black uppercase tracking-tight text-text-primary mb-1 text-accent">Dokumentasi IKH</h2>
-          <p className="text-xs text-text-secondary">Arsip harian Instruksi Kerja Harian (PDF)</p>
-        </div>
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="bg-accent text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:brightness-110 transition-all flex items-center gap-2 shadow-lg shadow-accent/20"
-        >
-          {isUploading ? <RefreshCcw size={14} className="animate-spin" /> : <Plus size={14} />}
-          {isUploading ? 'Uploading...' : 'Upload PDF Baru'}
-        </button>
-        <input type="file" ref={fileInputRef} onChange={handleUpload} accept="application/pdf,.pdf" className="hidden" />
-      </div>
-
-      {isUploading && (
-        <div className="bg-card-bg border border-border-subtle rounded-xl p-4 animate-pulse">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-[10px] uppercase font-bold text-accent">Uploading Document...</span>
-            <span className="text-[10px] font-bold text-text-secondary">{progress}%</span>
-          </div>
-          <div className="w-full bg-app-bg h-1.5 rounded-full overflow-hidden">
-            <motion.div 
-              className="bg-accent h-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {docs.length === 0 ? (
-          <div className="col-span-full py-20 text-center opacity-20 border-2 border-dashed border-border-subtle rounded-2xl">
-            <FileText size={48} className="mx-auto mb-4" />
-            <p className="text-sm font-black uppercase tracking-tighter">Belum ada arsip IKH</p>
-          </div>
-        ) : (
-          docs.map((doc) => (
-            <motion.div 
-              key={doc.id}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-card-bg border border-border-subtle rounded-2xl p-6 hover:border-accent/40 transition-all group relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-100 transition-opacity">
-                 <FileText size={40} className="text-accent" />
-              </div>
-              <div className="space-y-4">
-                <div className="p-3 bg-accent/10 w-fit rounded-xl text-accent">
-                  <FileText size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-text-primary truncate pr-10">{doc.name}</h4>
-                  <p className="text-[10px] uppercase font-bold text-text-secondary opacity-60 mt-1">{doc.date}</p>
-                </div>
-                <div className="pt-4 border-t border-border-subtle flex justify-between items-center">
-                  <div className="text-[8px] uppercase font-bold text-text-secondary">
-                    By: <span className="text-accent">{doc.uploaderName}</span>
-                  </div>
-                  <button 
-                    onClick={() => window.open(doc.url)}
-                    className="p-2 bg-accent/20 text-accent rounded-lg border border-accent/20 hover:bg-accent text-[9px] hover:text-white transition-all font-black uppercase tracking-widest flex items-center gap-2"
-                  >
-                    <Download size={12} /> Buka PDF
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
 export default function App() {
   return (
     <GlobalErrorBoundary>
@@ -1949,13 +1952,15 @@ export default function App() {
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fuel' | 'chat' | 'market' | 'upload' | 'notifications' | 'users' | 'weather' | 'ikh'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fuel' | 'chat' | 'market' | 'upload' | 'notifications' | 'users' | 'weather'>('dashboard');
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [mounted, setMounted] = useState(false);
   const [allData, setAllData] = useState<DailyRecord[]>(RAW_DATA);
   const [isLiveData, setIsLiveData] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [systemUpdate, setSystemUpdate] = useState<any>(null);
+  const [showSystemUpdate, setShowSystemUpdate] = useState(false);
 
   // Presence Tracking
   useEffect(() => {
@@ -2054,7 +2059,7 @@ function AppContent() {
           if (change.type === 'added' || change.type === 'modified') {
             const data = change.doc.data();
             setNotifications(prev => [{
-              id: Date.now(),
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               type: 'update',
               title: 'Data Operasional Baru',
               desc: `Update data untuk tanggal ${data.date} telah masuk ke sistem.`,
@@ -2087,7 +2092,7 @@ function AppContent() {
         const msg = snapshot.docs[0].data();
         if (msg.userId !== user.uid) {
            setNotifications(prev => [{
-              id: Date.now(),
+              id: `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               type: 'chat',
               title: 'Pesan Baru',
               desc: `${msg.userName}: ${msg.text.substring(0, 30)}...`,
@@ -2101,12 +2106,58 @@ function AppContent() {
     return () => unsubscribe();
   }, [user?.uid]);
 
+  // System Updates Listener
+  useEffect(() => {
+    const q = query(collection(db, 'system_updates'), orderBy('timestamp', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        const update = { 
+          id: snapshot.docs[0].id, 
+          title: data.title || '',
+          ...data 
+        };
+        setSystemUpdate(update);
+        setShowSystemUpdate(true);
+        
+        // Also add to notifications list if not already there or if it's new
+        setNotifications(prev => {
+          const exists = prev.find(n => n.id === update.id);
+          if (exists) return prev;
+          return [{
+            id: update.id,
+            type: 'system',
+            title: 'Update Sistem',
+            desc: update.title || 'Pembaharuan sistem tersedia',
+            time: 'Just now',
+            icon: Bell,
+            color: 'text-accent'
+          }, ...prev].slice(0, 10);
+        });
+      }
+    }, (error) => {
+      console.warn("System updates listener permission issue (likely not signed in yet):", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const handleLogout = async () => {
     try {
+      if (user) {
+        // Explicitly set presence to Offline before Auth signout
+        const presenceRef = doc(db, 'presence', user.uid);
+        await setDoc(presenceRef, { 
+          status: 'Offline', 
+          lastActive: serverTimestamp() 
+        }, { merge: true });
+        console.log("Presence set to offline for:", user.uid);
+      }
       await signOut(auth);
       setUser(null);
+      setActiveTab('dashboard');
     } catch (error) {
       console.error("Logout failed:", error);
+      setUser(null);
     }
   };
 
@@ -2290,15 +2341,7 @@ function AppContent() {
             <CloudRain size={14} /> Weather Lemo
           </button>
 
-          <button 
-            onClick={() => { setActiveTab('ikh'); setIsSidebarOpen(false); }}
-             className={cn(
-               "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
-               activeTab === 'ikh' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
-             )}
-          >
-            <FileText size={14} /> Dokumentasi IKH
-          </button>
+          {/* IKH Tab removed */}
           
           <div className="pt-4 pb-2">
             <p className="px-3 text-[8px] font-black uppercase tracking-[0.2em] text-text-secondary opacity-30">Tools & Management</p>
@@ -2343,11 +2386,49 @@ function AppContent() {
           >
             <LogOut size={12} /> Logout System
           </button>
+
+          <div className="mt-4 p-3 bg-app-bg/20 rounded-lg border border-border-subtle/30">
+            <p className="text-[7px] font-black uppercase tracking-widest text-text-secondary opacity-40 mb-1">Support System</p>
+            <p className="text-[8px] font-bold text-text-secondary opacity-60 flex items-center gap-2">
+              <span className="w-1 h-1 rounded-full bg-accent" />
+              jefri@bizgroup-id.com
+            </p>
+          </div>
         </div>
       </motion.aside>
 
-      {/* Main Content */}
       <main className="flex-1 lg:ml-64 min-h-screen flex flex-col w-full">
+        {/* System Update Banner */}
+        <AnimatePresence>
+          {showSystemUpdate && systemUpdate && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-accent text-white py-2 px-10 relative overflow-hidden flex items-center justify-center gap-4 border-b border-accent/20 z-30"
+            >
+              <div className="flex items-center gap-3">
+                <Bell size={12} className="animate-bounce" />
+                <p className="text-[9px] font-black uppercase tracking-[0.2em]">
+                  PEMBAHARUAN SISTEM: {systemUpdate.title || 'Check Notification for details'}
+                </p>
+                <button 
+                  onClick={() => { setActiveTab('notifications'); setShowSystemUpdate(false); }}
+                  className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-[8px] font-bold uppercase transition-all"
+                >
+                  Detail
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowSystemUpdate(false)}
+                className="absolute right-4 p-1 hover:bg-white/10 rounded transition-all"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Top Header */}
         <header className="h-[72px] bg-card-bg border-b border-border-subtle flex items-center justify-between px-4 lg:px-10 sticky top-0 z-10 w-full">
           <div className="flex items-center gap-3 lg:gap-6">
@@ -2365,7 +2446,7 @@ function AppContent() {
                   case 'chat': return 'Comm';
                   case 'market': return 'Market';
                   case 'weather': return 'Weather';
-                  case 'ikh': return 'Arsip';
+                  {/* ikh case removed */}
                   case 'upload': return 'Data';
                   case 'notifications': return 'Notif';
                   case 'users': return 'Users';
@@ -2442,7 +2523,7 @@ function AppContent() {
               {activeTab === 'fuel' && <FuelLog data={filteredData} />}
               {activeTab === 'chat' && <Chat user={user} />}
               {activeTab === 'market' && <MarketPrice />}
-              {activeTab === 'ikh' && user && <IkhComponent user={user} />}
+              {/* ikh render removed */}
               {activeTab === 'upload' && <UploadData onUploadComplete={() => setActiveTab('dashboard')} />}
               {activeTab === 'notifications' && <NotificationPanel items={notifications} />}
               {activeTab === 'users' && user && <UserList currentUser={user} />}

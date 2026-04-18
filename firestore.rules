@@ -58,26 +58,27 @@ service cloud.firestore {
         && data.pa is map;
     }
 
-    function isValidIkhDocument(data) {
-      return data.keys().hasAll(['name', 'url', 'date', 'timestamp', 'uploadedBy', 'uploaderName'])
-        && data.name is string && data.name.size() <= 255
-        && data.url is string && data.url.size() <= 1000
-        && data.uploadedBy == request.auth.uid;
+    function isValidSystemUpdate(data) {
+      return data.keys().hasAll(['title', 'timestamp'])
+        && data.title is string && data.title.size() <= 200
+        && (data.timestamp is string || data.timestamp is timestamp)
+        && (!data.keys().hasAny(['content']) || data.content is string)
+        && (!data.keys().hasAny(['version']) || data.version is string);
     }
 
     // --- Matches ---
+    
+    // Global rule for presence (Relaxed slightly for debugging/resilience)
+    match /presence/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
 
     match /messages/{messageId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
       allow delete: if isSignedIn() && (request.auth.uid == existing().userId || isAdmin());
       allow update: if isAdmin();
-    }
-
-    match /ikh/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(docId) && isValidIkhDocument(incoming());
-      allow delete: if isAdmin();
     }
 
     match /dailyRecords/{recordId} {
@@ -88,6 +89,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    match /system_updates/{updateId} {
+      allow read: if true; // Publicly readable for initial banner loading
+      allow write: if isAdmin();
+    }
+    
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if false; // Only manageable via console
@@ -95,10 +101,6 @@ service cloud.firestore {
 
     match /test/connection {
       allow get: if true;
-    }
-
-    match /presence/{userId} {
-      allow read, write: if isSignedIn();
     }
   }
 }

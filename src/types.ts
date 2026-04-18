@@ -52,16 +52,6 @@ export interface ChatAttachment {
   name: string;
   url: string;
 }
-export interface IkhDocument {
-  id: string;
-  name: string;
-  url: string;
-  date: string; // Document date
-  timestamp: any; // serverTimestamp for sorting
-  uploadedBy: string;
-  uploaderName: string;
-}
-
 export interface ChatMessage {
   id: string;
   user: User;

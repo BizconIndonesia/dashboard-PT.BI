@@ -6,6 +6,33 @@
     <meta name="description" content="PT.LHL - Kalteng Operation Dashboard | Real-time mining operations monitoring" />
     <title>PT.LHL - Kalteng Operation Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <script>
+      /**
+       * Error handler to catch loading issues before React mounts.
+       */
+      window.addEventListener('error', function(event) {
+        const root = document.getElementById('root');
+        if (root && root.innerHTML.includes('Memuat Dashboard')) {
+          root.innerHTML = `
+            <div style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #0a0a0a; color: #E0E6ED; margin: 0; padding: 20px;">
+              <div style="max-width: 600px; text-align: center; background: #1A1E26; padding: 40px; border-radius: 12px; border: 1px solid #2D3748;">
+                <div style="font-size: 32px; margin-bottom: 20px;">⚠️</div>
+                <h2 style="color: #E74C3C; font-size: 20px; margin: 0 0 20px 0; font-weight: bold;">Gagal Memuat Aplikasi</h2>
+                <p style="color: #94A3B8; font-size: 14px; margin: 0 0 20px 0; line-height: 1.6;">
+                  Terjadi kesalahan saat mengunduh komponen sistem. Mohon muat ulang halaman.
+                </p>
+                <div style="background: #0F1218; padding: 10px; border-radius: 8px; margin-bottom: 20px; border-left: 3px solid #F37021; text-align: left; font-size: 11px; font-family: monospace; color: #F37021;">
+                  💥 ${event.message || 'Unknown error'}
+                </div>
+                <button onclick="window.location.reload()" style="background: #F37021; color: white; border: none; padding: 12px 32px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                  ↻ Muat Ulang Halaman
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root">
@@ -25,9 +52,6 @@
       }
     </style>
 
-    <!-- Error handling and boot logic -->
-    <script type="module" src="/src/errorHandler.ts"></script>
-    
     <!-- Main React App -->
     <script type="module" src="/src/main.tsx"></script>
   </body>

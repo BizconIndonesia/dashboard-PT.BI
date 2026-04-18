@@ -96,26 +96,20 @@
       },
       "required": ["date"]
     },
-    "IkhDocument": {
-      "title": "Dokumentasi IKH",
-      "description": "Daily work instructions stored as PDF.",
+    "SystemUpdate": {
+      "title": "System Update",
+      "description": "Information about a system-wide update or notification.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "url": { "type": "string" },
-        "date": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "uploadedBy": { "type": "string" },
-        "uploaderName": { "type": "string" }
+        "version": { "type": "string" }
       },
-      "required": ["name", "url", "date", "timestamp", "uploadedBy"]
+      "required": ["title", "timestamp"]
     }
   },
   "firestore": {
-    "/ikh/{docId}": {
-      "schema": "IkhDocument",
-      "description": "Archive of PDF daily work instructions."
-    },
     "/messages/{messageId}": {
       "schema": "ChatMessage",
       "description": "Global chat messages for the operation."
@@ -137,6 +131,10 @@
         }
       },
       "description": "User presence tracking for the site directory."
+    },
+    "/system_updates/{updateId}": {
+      "schema": "SystemUpdate",
+      "description": "Critical system updates and notifications displayed on the banner."
     }
   }
 }
