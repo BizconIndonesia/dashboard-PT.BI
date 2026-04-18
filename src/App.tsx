@@ -242,9 +242,19 @@ const Login = ({ onLogin }: { onLogin: (user: User) => void }) => {
           name, 
           position 
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Anonymous login failed:", error);
-        // If anonymous auth is disabled, fallback to mock but warn
+        let errorHint = "Silakan gunakan Google Login atau hubungi admin untuk mengaktifkan 'Anonymous Auth' di Firebase Console.";
+        
+        if (error.code === 'auth/operation-not-allowed') {
+          errorHint = "Peringatan: 'Anonymous Auth' belum diaktifkan di Firebase Console Anda. Silakan aktifkan di (Authentication > Sign-in method).";
+        } else if (error.code === 'auth/unauthorized-domain') {
+          errorHint = "Domain ini belum terdaftar di 'Authorized Domains' di Firebase Console. Tambahkan domain ini agar Login bisa berfungsi.";
+        }
+
+        alert("Gagal Login Resmi: " + errorHint + "\n\nSistem akan masuk sebagai 'Tamu (View Only)'. Anda tidak akan bisa mengunggah data.");
+        
+        // Fallback to mock for UI view only
         onLogin({ 
           uid: 'mock-' + name.toLowerCase().replace(/\s/g, '-'),
           name, 
@@ -1204,7 +1214,7 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
   const saveRecordToFirestore = async (record: DailyRecord) => {
     // Check if we have a real Firebase user
     if (!auth.currentUser) {
-      throw new Error("Sistem Keamanan: Anda harus login secara resmi untuk menyimpan data ke database. Silakan gunakan Google Login atau aktifkan Anonymous Auth di Firebase Console.");
+      throw new Error("Sistem Keamanan Tinggi: Database mendeteksi Anda masuk sebagai 'Tamu'. Hanya pengguna dengan 'Google Login' atau 'Anonymous Auth (Enabled)' yang diizinkan untuk mengubah data operasional.");
     }
     
     try {
@@ -1213,7 +1223,7 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
       await setDoc(doc(db, 'dailyRecords', docId), record);
     } catch (error: any) {
       if (error.code === 'permission-denied') {
-        throw new Error("Izin Ditolak: Akun Anda tidak memiliki otoritas untuk menulis data ke database ini.");
+        throw new Error("Izin Ditolak: Akun Anda tidak memiliki otoritas Administrator untuk menulis data ke database ini. Periksa Security Rules Firestore Anda.");
       }
       throw error;
     }
