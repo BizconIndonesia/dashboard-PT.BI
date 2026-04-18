@@ -1,87 +1,83 @@
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// Collection: messages
-// Document ID: auto-generated
-// Fields:
-//   - text: string (required, 1-1000 chars)
-//   - userId: string (required)
-//   - userName: string (required, 1-50 chars)
-//   - userPosition: string (required, 1-50 chars)
-//   - timestamp: timestamp (required)
-//   - attachments: list (optional, max 10 items)
-//
-// ===============================================================
-
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
     
-    function isAuthenticated() {
-      return request.auth != null && request.auth.uid != null;
-    }
-
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidMessage(data) {
-      return data.text is string && 
-             data.text.size() > 0 && 
-             data.text.size() <= 1000 &&
-             data.userId is string &&
-             data.userName is string &&
-             data.userName.size() > 0 &&
-             data.userName.size() <= 64 &&
-             data.userPosition is string &&
-             data.userPosition.size() > 0 &&
-             data.userPosition.size() <= 64 &&
-             data.timestamp is timestamp;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
-      // Default admin from environment
-      return isAuthenticated() && 
-             (request.auth.token.email == "jefree.race@gmail.com" && request.auth.token.email_verified == true);
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // ===============================================================
-    // Collection: messages
-    // ===============================================================
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validations ---
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['text', 'userId', 'userName', 'userPosition', 'timestamp'])
+        && data.keys().size() <= 6 // text, userId, userName, userPosition, timestamp, optional attachments
+        && data.text is string && data.text.size() <= 1000
+        && data.userId == request.auth.uid
+        && data.userName is string && data.userName.size() <= 100
+        && data.userPosition is string && data.userPosition.size() <= 100
+        && (data.timestamp is string || data.timestamp is timestamp)
+        && (!data.keys().hasAny(['attachments']) || data.attachments is list);
+    }
+
+    function isValidDailyRecord(data) {
+      return data.keys().hasAll(['date', 'timestamp', 'ob', 'cg', 'weather', 'productivity', 'pa'])
+        && data.date is string && data.date.size() <= 20
+        && data.timestamp is number
+        && data.ob is map && data.ob.actual is number
+        && data.cg is map && data.cg.actual is number
+        && data.productivity is map
+        && data.pa is map;
+    }
+
+    // --- Matches ---
+
     match /messages/{messageId} {
-      // Allow reading history for anyone authenticated
-      allow read: if isAuthenticated();
-      
-      // Allow creating messages if authenticated and valid
-      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
-      
-      // Prevent updates/deletes to maintain history integrity, except for admins
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
+      // Messages are immutable in this flow
       allow update, delete: if isAdmin();
     }
 
-    // ===============================================================
-    // Collection: dailyRecords
-    // ===============================================================
     match /dailyRecords/{recordId} {
-      // Allow read/write for any authenticated user (including anonymous)
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
-      // Only admins can delete records
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(recordId) && isValidDailyRecord(incoming());
+      allow update: if isSignedIn() && isValidId(recordId) && isValidDailyRecord(incoming());
       allow delete: if isAdmin();
     }
+    
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false; // Only manageable via console
+    }
 
-    // Default deny
-    match /{path=**} {
-      allow read, write: if false;
+    match /test/connection {
+      allow get: if true;
     }
   }
 }
