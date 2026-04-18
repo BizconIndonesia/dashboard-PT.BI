@@ -95,9 +95,27 @@
         }
       },
       "required": ["date"]
+    },
+    "IkhDocument": {
+      "title": "Dokumentasi IKH",
+      "description": "Daily work instructions stored as PDF.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "uploadedBy": { "type": "string" },
+        "uploaderName": { "type": "string" }
+      },
+      "required": ["name", "url", "date", "timestamp", "uploadedBy"]
     }
   },
   "firestore": {
+    "/ikh/{docId}": {
+      "schema": "IkhDocument",
+      "description": "Archive of PDF daily work instructions."
+    },
     "/messages/{messageId}": {
       "schema": "ChatMessage",
       "description": "Global chat messages for the operation."

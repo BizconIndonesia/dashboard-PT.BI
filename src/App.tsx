@@ -13,7 +13,9 @@ import {
   getDocs,
   writeBatch,
   doc,
-  limit
+  limit,
+  deleteDoc,
+  getDoc
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
@@ -66,7 +68,7 @@ import {
   PieChart, Pie, ComposedChart
 } from 'recharts';
 import { RAW_DATA, getMonthNames, filterByMonth } from './data';
-import { User, DailyRecord, ChatMessage } from './types';
+import { User, DailyRecord, ChatMessage, IkhDocument } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -879,19 +881,42 @@ const Chat = ({ user }: { user: User }) => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             key={m.id} 
-            className="p-4 bg-card-bg border border-border-subtle rounded-lg shadow-sm max-w-[85%] mb-2"
+            className={cn(
+              "p-4 bg-card-bg border border-border-subtle rounded-lg shadow-sm max-w-[85%] mb-2 relative group",
+              m.user.uid === user.uid ? "ml-auto border-accent/20 bg-accent/5" : "mr-auto"
+            )}
           >
             <div className="flex items-center gap-2 mb-2">
               <span className="font-bold text-xs uppercase text-accent">{m.user.name}</span>
               <span className="text-[10px] uppercase font-bold text-text-secondary opacity-60 px-2 py-0.5 bg-app-bg rounded">{m.user.position}</span>
               <span className="text-[10px] text-text-secondary opacity-30 ml-auto">{formatTimestamp(m.timestamp)}</span>
+              
+              {(user.isAdmin || m.user.uid === user.uid) && (
+                <button 
+                  onClick={async () => {
+                    if (confirm("Hapus pesan ini?")) {
+                      try {
+                        console.log("Attempting to delete message:", m.id);
+                        await deleteDoc(doc(db, 'messages', m.id));
+                      } catch (err: any) {
+                        console.error("Delete failed:", err);
+                        alert("Gagal menghapus pesan: " + err.message);
+                      }
+                    }
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-danger text-text-secondary"
+                  title="Hapus Pesan"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
             {m.text && <p className="text-sm text-text-primary leading-relaxed mb-3">{m.text}</p>}
             
             {m.attachments && m.attachments.length > 0 && (
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {m.attachments.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 p-2 bg-app-bg/50 border border-border-subtle rounded-lg group hover:border-accent/40 transition-colors">
+                  <div key={i} className="flex items-center gap-2 p-2 bg-app-bg/50 border border-border-subtle rounded-lg group/item hover:border-accent/40 transition-colors">
                     <div className="w-8 h-8 rounded bg-accent/10 flex items-center justify-center text-accent">
                       {getFileIcon(a.type)}
                     </div>
@@ -901,7 +926,7 @@ const Chat = ({ user }: { user: User }) => {
                     </div>
                     <button 
                       onClick={() => window.open(a.url)}
-                      className="text-[9px] uppercase font-black text-accent px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="text-[9px] uppercase font-black text-accent px-2 py-1 opacity-0 group-hover/item:opacity-100 transition-opacity"
                     >
                       View
                     </button>
@@ -1754,6 +1779,148 @@ const MarketPrice = () => {
   );
 };
 
+const IkhComponent = ({ user }: { user: User }) => {
+  const [docs, setDocs] = useState<IkhDocument[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'ikh'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as IkhDocument[];
+      setDocs(items);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      alert("Mohon pilih file PDF");
+      return;
+    }
+
+    setIsUploading(true);
+    setProgress(10);
+    try {
+      console.log("Uploading file to Storage:", file.name);
+      const fileRef = ref(storage, `ikh/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(fileRef, file);
+      setProgress(50);
+      
+      const url = await getDownloadURL(snapshot.ref);
+      console.log("File uploaded, getting URL:", url);
+      setProgress(80);
+
+      const docData = {
+        name: file.name,
+        url: url,
+        date: new Date().toLocaleDateString('id-ID'),
+        timestamp: serverTimestamp(),
+        uploadedBy: user.uid,
+        uploaderName: user.name
+      };
+
+      console.log("Adding doc to Firestore...");
+      await addDoc(collection(db, 'ikh'), docData);
+      setProgress(100);
+      alert("File IKH berhasil diunggah");
+    } catch (err: any) {
+      console.error("IKH upload failed:", err);
+      alert("Gagal unggah: " + (err.code || err.message));
+    } finally {
+      setIsUploading(false);
+      setProgress(0);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight text-text-primary mb-1 text-accent">Dokumentasi IKH</h2>
+          <p className="text-xs text-text-secondary">Arsip harian Instruksi Kerja Harian (PDF)</p>
+        </div>
+        <button 
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="bg-accent text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:brightness-110 transition-all flex items-center gap-2 shadow-lg shadow-accent/20"
+        >
+          {isUploading ? <RefreshCcw size={14} className="animate-spin" /> : <Plus size={14} />}
+          {isUploading ? 'Uploading...' : 'Upload PDF Baru'}
+        </button>
+        <input type="file" ref={fileInputRef} onChange={handleUpload} accept="application/pdf,.pdf" className="hidden" />
+      </div>
+
+      {isUploading && (
+        <div className="bg-card-bg border border-border-subtle rounded-xl p-4 animate-pulse">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] uppercase font-bold text-accent">Uploading Document...</span>
+            <span className="text-[10px] font-bold text-text-secondary">{progress}%</span>
+          </div>
+          <div className="w-full bg-app-bg h-1.5 rounded-full overflow-hidden">
+            <motion.div 
+              className="bg-accent h-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {docs.length === 0 ? (
+          <div className="col-span-full py-20 text-center opacity-20 border-2 border-dashed border-border-subtle rounded-2xl">
+            <FileText size={48} className="mx-auto mb-4" />
+            <p className="text-sm font-black uppercase tracking-tighter">Belum ada arsip IKH</p>
+          </div>
+        ) : (
+          docs.map((doc) => (
+            <motion.div 
+              key={doc.id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-card-bg border border-border-subtle rounded-2xl p-6 hover:border-accent/40 transition-all group relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-100 transition-opacity">
+                 <FileText size={40} className="text-accent" />
+              </div>
+              <div className="space-y-4">
+                <div className="p-3 bg-accent/10 w-fit rounded-xl text-accent">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-text-primary truncate pr-10">{doc.name}</h4>
+                  <p className="text-[10px] uppercase font-bold text-text-secondary opacity-60 mt-1">{doc.date}</p>
+                </div>
+                <div className="pt-4 border-t border-border-subtle flex justify-between items-center">
+                  <div className="text-[8px] uppercase font-bold text-text-secondary">
+                    By: <span className="text-accent">{doc.uploaderName}</span>
+                  </div>
+                  <button 
+                    onClick={() => window.open(doc.url)}
+                    className="p-2 bg-accent/20 text-accent rounded-lg border border-accent/20 hover:bg-accent text-[9px] hover:text-white transition-all font-black uppercase tracking-widest flex items-center gap-2"
+                  >
+                    <Download size={12} /> Buka PDF
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <GlobalErrorBoundary>
@@ -1765,7 +1932,7 @@ export default function App() {
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fuel' | 'chat' | 'market' | 'upload' | 'notifications' | 'users' | 'weather'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fuel' | 'chat' | 'market' | 'upload' | 'notifications' | 'users' | 'weather' | 'ikh'>('dashboard');
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [mounted, setMounted] = useState(false);
   const [allData, setAllData] = useState<DailyRecord[]>(RAW_DATA);
@@ -1816,14 +1983,27 @@ function AppContent() {
 
   useEffect(() => {
     setMounted(true);
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        let isAdmin = false;
+        try {
+          const adminDoc = await getDoc(doc(db, 'admins', firebaseUser.uid));
+          if (adminDoc.exists()) {
+            isAdmin = true;
+          } else if (firebaseUser.email === 'jefri@bizgroup-id.com') {
+            isAdmin = true;
+          }
+        } catch (e) {
+          console.error("Admin check failed:", e);
+        }
+
         setUser({
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || 'User',
           email: firebaseUser.email || undefined,
-          position: 'Dashboard User', // Default position for official users
-          photoURL: firebaseUser.photoURL || undefined
+          position: isAdmin ? 'Administrator' : 'Dashboard User',
+          photoURL: firebaseUser.photoURL || undefined,
+          isAdmin: isAdmin
         });
       } else {
         setUser(null);
@@ -2092,6 +2272,16 @@ function AppContent() {
           >
             <CloudRain size={14} /> Weather Lemo
           </button>
+
+          <button 
+            onClick={() => { setActiveTab('ikh'); setIsSidebarOpen(false); }}
+             className={cn(
+               "w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold uppercase text-[10px] tracking-[0.15em]",
+               activeTab === 'ikh' ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+             )}
+          >
+            <FileText size={14} /> Dokumentasi IKH
+          </button>
           
           <div className="pt-4 pb-2">
             <p className="px-3 text-[8px] font-black uppercase tracking-[0.2em] text-text-secondary opacity-30">Tools & Management</p>
@@ -2158,6 +2348,7 @@ function AppContent() {
                   case 'chat': return 'Comm';
                   case 'market': return 'Market';
                   case 'weather': return 'Weather';
+                  case 'ikh': return 'Arsip';
                   case 'upload': return 'Data';
                   case 'notifications': return 'Notif';
                   case 'users': return 'Users';
@@ -2234,6 +2425,7 @@ function AppContent() {
               {activeTab === 'fuel' && <FuelLog data={filteredData} />}
               {activeTab === 'chat' && <Chat user={user} />}
               {activeTab === 'market' && <MarketPrice />}
+              {activeTab === 'ikh' && user && <IkhComponent user={user} />}
               {activeTab === 'upload' && <UploadData onUploadComplete={() => setActiveTab('dashboard')} />}
               {activeTab === 'notifications' && <NotificationPanel items={notifications} />}
               {activeTab === 'users' && user && <UserList currentUser={user} />}

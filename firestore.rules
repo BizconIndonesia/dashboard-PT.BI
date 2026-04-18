@@ -17,7 +17,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'jefri@bizgroup-id.com'
+      );
     }
 
     function isValidId(id) {
@@ -55,12 +58,26 @@ service cloud.firestore {
         && data.pa is map;
     }
 
+    function isValidIkhDocument(data) {
+      return data.keys().hasAll(['name', 'url', 'date', 'timestamp', 'uploadedBy', 'uploaderName'])
+        && data.name is string && data.name.size() <= 255
+        && data.url is string && data.url.size() <= 1000
+        && data.uploadedBy == request.auth.uid;
+    }
+
     // --- Matches ---
 
     match /messages/{messageId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
-      allow update, delete: if isAdmin();
+      allow delete: if isSignedIn() && (request.auth.uid == existing().userId || isAdmin());
+      allow update: if isAdmin();
+    }
+
+    match /ikh/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(docId) && isValidIkhDocument(incoming());
+      allow delete: if isAdmin();
     }
 
     match /dailyRecords/{recordId} {
