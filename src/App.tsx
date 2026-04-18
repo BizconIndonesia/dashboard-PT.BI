@@ -17,7 +17,7 @@ import {
   deleteDoc,
   getDoc
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -1808,16 +1808,29 @@ const IkhComponent = ({ user }: { user: User }) => {
     }
 
     setIsUploading(true);
-    setProgress(10);
+    setProgress(5);
     try {
-      console.log("Uploading file to Storage:", file.name);
+      console.log("Uploading file to Storage with resumable session:", file.name);
       const fileRef = ref(storage, `ikh/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(fileRef, file);
-      setProgress(50);
-      
-      const url = await getDownloadURL(snapshot.ref);
+      const uploadTask = uploadBytesResumable(fileRef, file);
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            setProgress(pct);
+          }, 
+          (error) => {
+            console.error("UploadTask failed:", error);
+            reject(error);
+          }, 
+          () => resolve()
+        );
+      });
+
+      const url = await getDownloadURL(uploadTask.snapshot.ref);
       console.log("File uploaded, getting URL:", url);
-      setProgress(80);
+      setProgress(95);
 
       const docData = {
         name: file.name,
@@ -1834,7 +1847,11 @@ const IkhComponent = ({ user }: { user: User }) => {
       alert("File IKH berhasil diunggah");
     } catch (err: any) {
       console.error("IKH upload failed:", err);
-      alert("Gagal unggah: " + (err.code || err.message));
+      let errorMsg = err.message;
+      if (err.code === 'storage/retry-limit-exceeded') {
+        errorMsg = "Koneksi terputus saat mengunggah. Mohon periksa internet Anda dan coba lagi.";
+      }
+      alert("Gagal unggah: " + errorMsg);
     } finally {
       setIsUploading(false);
       setProgress(0);

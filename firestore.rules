@@ -98,8 +98,7 @@ service cloud.firestore {
     }
 
     match /presence/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if isSignedIn();
     }
   }
 }
