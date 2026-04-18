@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, Component, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth } from './firebase';
+import { db, auth, storage } from './firebase';
 import { 
   collection, 
   addDoc,
@@ -15,6 +15,7 @@ import {
   doc,
   limit
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -689,6 +690,7 @@ const Chat = ({ user }: { user: User }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<{type: 'image' | 'video' | 'document', file: File}[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -751,30 +753,42 @@ const Chat = ({ user }: { user: User }) => {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) return;
     if (!input.trim() && attachments.length === 0) return;
     
-    // In a real app, we would upload files to Storage first
-    const messageAttachments = attachments.map(a => ({
-      type: a.type,
-      name: a.file.name,
-      url: URL.createObjectURL(a.file) // Mock URL for demo
-    }));
-
-    const messageData = {
-      userId: user.uid,
-      userName: user.name,
-      userPosition: user.position,
-      text: input,
-      timestamp: serverTimestamp(),
-      attachments: messageAttachments
-    };
-
+    setIsUploading(true);
     try {
+      const messageAttachments = [];
+      
+      // Upload files to Firebase Storage
+      for (const a of attachments) {
+        const fileRef = ref(storage, `chat/${Date.now()}_${a.file.name}`);
+        const snapshot = await uploadBytes(fileRef, a.file);
+        const url = await getDownloadURL(snapshot.ref);
+        messageAttachments.push({
+          type: a.type,
+          name: a.file.name,
+          url: url
+        });
+      }
+
+      const messageData = {
+        userId: user.uid,
+        userName: user.name,
+        userPosition: user.position,
+        text: input,
+        timestamp: serverTimestamp(),
+        attachments: messageAttachments
+      };
+
       await addDoc(collection(db, 'messages'), messageData);
       setInput('');
       setAttachments([]);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'messages');
+    } catch (error: any) {
+      console.error("Chat send failed:", error);
+      alert("Gagal mengirim pesan: " + error.message);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -925,8 +939,14 @@ const Chat = ({ user }: { user: User }) => {
             placeholder="Tulis pesan..."
             className="flex-1 p-3 bg-app-bg border border-border-subtle rounded-lg text-sm text-text-primary outline-none focus:border-accent transition-colors"
           />
-          <button className="bg-accent text-white px-6 py-2 rounded-lg font-bold uppercase text-[10px] tracking-widest hover:brightness-110 active:scale-95 transition-all">
-            Send
+          <button 
+            disabled={isUploading}
+            className={cn(
+              "bg-accent text-white px-6 py-2 rounded-lg font-bold uppercase text-[10px] tracking-widest transition-all",
+              isUploading ? "opacity-50 cursor-not-allowed" : "hover:brightness-110 active:scale-95"
+            )}
+          >
+            {isUploading ? "Uploading..." : "Send"}
           </button>
         </form>
         
