@@ -1174,13 +1174,20 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
   };
 
   const saveRecordToFirestore = async (record: DailyRecord) => {
+    // Check if we have a real Firebase user
+    if (!auth.currentUser) {
+      throw new Error("Sistem Keamanan: Anda harus login secara resmi untuk menyimpan data ke database. Silakan gunakan Google Login atau aktifkan Anonymous Auth di Firebase Console.");
+    }
+    
     try {
       // Use date as ID to avoid duplicates (e.g. "26 Mar" -> doc id)
       const docId = record.date.replace(/\s+/g, '-').toLowerCase();
       await setDoc(doc(db, 'dailyRecords', docId), record);
-    } catch (error) {
-      // Don't rethrow, just log and keep processing if possible
-      console.error("Error saving record:", error);
+    } catch (error: any) {
+      if (error.code === 'permission-denied') {
+        throw new Error("Izin Ditolak: Akun Anda tidak memiliki otoritas untuk menulis data ke database ini.");
+      }
+      throw error;
     }
   };
 
@@ -1191,6 +1198,9 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
       alert("File kosong atau tidak terbaca.");
       return;
     }
+
+    let successCount = 0;
+    let failCount = 0;
 
     try {
       for (let i = 0; i < totalRows; i++) {
@@ -1293,17 +1303,32 @@ const UploadData = ({ onUploadComplete }: { onUploadComplete?: () => void }) => 
           }
         };
 
-        await saveRecordToFirestore(record);
-        setProgress(Math.round(((i + 1) / totalRows) * 100));
+        try {
+          await saveRecordToFirestore(record);
+          successCount++;
+        } catch (e: any) {
+          console.error("Row write failed:", e);
+          failCount++;
+          // If the very first write fails, stop and alert
+          if (i === 0) throw e;
+        }
         
-        // Minor delay to keep UI responsive and allow progress to update
+        setProgress(Math.round(((i + 1) / totalRows) * 100));
         if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
       }
+
+      if (failCount > 0) {
+        alert(`Selesai dengan catatan: ${successCount} baris berhasil, ${failCount} baris gagal. Periksa izin akses Firestore Anda.`);
+      }
+
       setIsDone(true);
-      if (onUploadComplete) onUploadComplete();
-    } catch (err) {
-      console.error("Error during row processing:", err);
-      alert("Error memproses data. Silakan periksa format file.");
+      if (onUploadComplete) {
+        // Give time for UI feedback
+        setTimeout(() => onUploadComplete(), 1500);
+      }
+    } catch (err: any) {
+      console.error("Upload process aborted:", err);
+      alert("Proses Unggah Dibatalkan: " + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -1617,16 +1642,19 @@ function AppContent() {
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [mounted, setMounted] = useState(false);
   const [allData, setAllData] = useState<DailyRecord[]>(RAW_DATA);
+  const [isLiveData, setIsLiveData] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        // If it's a mock user (anonymous fallback with fake UID), treat as guest
+        const isMock = firebaseUser.uid.startsWith('mock-');
         setUser({
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || 'User',
           email: firebaseUser.email || undefined,
-          position: 'Dashboard User',
+          position: isMock ? 'Guest User' : 'Dashboard User',
           photoURL: firebaseUser.photoURL || undefined
         });
       } else {
@@ -1639,11 +1667,10 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-
-    // Real-time listener for daily records
+    // Real-time listener for daily records - works for both public and logged in users
     const q = query(collection(db, 'dailyRecords'), orderBy('timestamp', 'asc'));
     const unsubscribeData = onSnapshot(q, (snapshot) => {
+      console.log("Firestore Data Update:", snapshot.size, "records found.");
       if (!snapshot.empty) {
         const records = snapshot.docs.map(doc => {
           const d = doc.data();
@@ -1658,11 +1685,14 @@ function AppContent() {
           } as DailyRecord;
         });
         setAllData(records);
+        setIsLiveData(true);
       } else {
         console.log("Firestore collection empty, using mock data.");
         setAllData(RAW_DATA);
+        setIsLiveData(false);
       }
     }, (error) => {
+      console.error("Snapshot error:", error);
       handleFirestoreError(error, OperationType.LIST, 'dailyRecords');
     });
 
@@ -1929,8 +1959,17 @@ function AppContent() {
                 <Bell size={18} className={cn(activeTab === 'notifications' ? "text-accent" : "text-text-secondary group-hover:text-text-primary")} />
                 <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-danger border-2 border-card-bg rounded-full flex items-center justify-center text-[6px] text-white">4</span>
              </button>
-             <div className="flex items-center gap-2 bg-success/10 text-success px-3 py-1.5 rounded-full border border-success/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> Live Monitoring
+             <div className={cn(
+               "flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500",
+               isLiveData 
+                ? "bg-success/10 text-success border-success/20" 
+                : "bg-warning/10 text-warning border-warning/20"
+             )}>
+                <div className={cn(
+                  "w-1.5 h-1.5 rounded-full animate-pulse",
+                  isLiveData ? "bg-success" : "bg-warning"
+                )} /> 
+                {isLiveData ? 'Live Cloud Data' : 'Starter/Mock Data'}
              </div>
              <div className="hidden lg:flex items-center gap-1 border-l border-border-subtle pl-6">
                 Site PT.LHL - Kalteng
